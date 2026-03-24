@@ -12,11 +12,12 @@ def create_app():
     # ✅ CONFIGURACIÓN CORS CORREGIDA (CLOUDLFARE + AZURE + LAN)
     # ==========================================================
     ALLOWED_ORIGINS = [
-        "https://icy-river-0e91e300f.1.azurestaticapps.net",  # frontend público Azure Static
-        "https://<TU_SUBDOMINIO>.trycloudflare.com",          # reemplazar por tu túnel Cloudflare real
-        "http://localhost:3000",                              # entorno de desarrollo local
+        "https://white-grass-08042cc0f.4.azurestaticapps.net",  # nuevo Azure Static Web App
+        "https://web.tesis-monitoring.xyz",                     # dominio personalizado (Cloudflare)
+        "https://api.tesis-monitoring.xyz",                     # por si el frontend llama desde mismo dominio
+        "http://localhost:3000",                                # desarrollo local
         "http://127.0.0.1:3000",
-        "http://192.168.0.25:3000",                                    # acceso LAN
+        "http://192.168.0.25:3000",                             # acceso LAN
     ]
 
     CORS(
