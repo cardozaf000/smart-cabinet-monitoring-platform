@@ -1,18 +1,7 @@
-  # Python
-  __pycache__/
-  *.py[cod]
-  *.egg-info/
-  .env
-  venv/
-  env/
-
-  # Node
-  frontend/node_modules/
-  frontend/build/
-
-  # Logs y temporales
-  *.log
-  *.pid
-
-  # Secretos / credenciales
-  .env.local
+__pycache__/
+*.py[cod]
+.env
+venv/
+frontend/node_modules/
+frontend/build/
+*.log
