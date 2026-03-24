@@ -1,8 +1,10 @@
 // api.js
-const isCloud = window.location.hostname.endsWith("azurestaticapps.net");
+const isCloud =
+  window.location.hostname.endsWith("azurestaticapps.net") ||
+  window.location.hostname.endsWith("tesis-monitoring.xyz");
 
 export const BACKEND = isCloud
-  ? "https://api.tesis-monitoring.xyz/"
+  ? "https://api.tesis-monitoring.xyz"
   : `http://${window.location.hostname}:5000`;
 
 export async function apiFetch(path, opts = {}) {
