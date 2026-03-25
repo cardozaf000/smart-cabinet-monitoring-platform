@@ -4,11 +4,11 @@ import {
   FiCheckCircle, FiAlertCircle, FiEdit2, FiCheck, FiMapPin,
 } from "react-icons/fi";
 import Portal from "./Portal";
+import { BACKEND as BACKEND_URL } from '../utils/api';
 
 /* ============================================================
    CONSTANTES
 ============================================================ */
-const BACKEND_URL   = `http://${window.location.hostname}:5000`;
 const PLACEMENTS_KEY = "cabinet_placements_v2";
 
 const RACK_W = 280, RACK_H = 680, U_COUNT = 42;
