@@ -201,7 +201,7 @@ function NavButton({ itemKey, label, Icon, active, onClick, collapsed, themeMode
 // ============================================================
 // Componente principal
 // ============================================================
-export default function LayoutHeader({ currentPage, onNavigate, collapsed, setCollapsed }) {
+export default function LayoutHeader({ currentPage, onNavigate, collapsed, setCollapsed, mobileOpen, setMobileOpen, isMobile }) {
   const navigate = useNavigate();
   const { theme, themeMode } = useTheme();
   const user = getUser();
@@ -292,13 +292,24 @@ export default function LayoutHeader({ currentPage, onNavigate, collapsed, setCo
   // ============================================================
   return (
     <>
+      {/* ── Overlay móvil ── */}
+      {isMobile && mobileOpen && (
+        <div
+          className="fixed inset-0 z-30 bg-black/60"
+          onClick={() => setMobileOpen(false)}
+        />
+      )}
+
       {/* ── Sidebar ──
           SIN overflow-hidden: necesario para que el botón de colapso
           en right:-12px no quede recortado por el borde del aside.
           Cada sección maneja su propio overflow internamente.
       */}
       <motion.aside
-        animate={{ width: collapsed ? 72 : 240 }}
+        animate={{
+          width: isMobile ? 240 : (collapsed ? 72 : 240),
+          x: isMobile && !mobileOpen ? -260 : 0,
+        }}
         transition={{ type: "tween", duration: 0.25, ease: "easeInOut" }}
         className="fixed inset-y-0 left-0 flex flex-col z-40"
         style={{
@@ -375,7 +386,7 @@ export default function LayoutHeader({ currentPage, onNavigate, collapsed, setCo
           */}
           <motion.button
             onClick={() => setCollapsed((v) => !v)}
-            className="absolute flex items-center justify-center rounded-full border shadow focus:outline-none"
+            className={`absolute flex items-center justify-center rounded-full border shadow focus:outline-none${isMobile ? " hidden" : ""}`}
             style={{
               right:           -13,
               top:             "50%",
@@ -491,8 +502,8 @@ export default function LayoutHeader({ currentPage, onNavigate, collapsed, setCo
                 label={item.label}
                 Icon={item.icon}
                 active={currentPage === item.key}
-                onClick={() => onNavigate(item.key)}
-                collapsed={collapsed}
+                onClick={() => { onNavigate(item.key); if (isMobile && setMobileOpen) setMobileOpen(false); }}
+                collapsed={isMobile ? false : collapsed}
                 themeMode={themeMode}
               />
             );

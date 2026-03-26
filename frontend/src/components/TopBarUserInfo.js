@@ -4,7 +4,7 @@ import { useTheme } from "../theme/ThemeProvider";
 import {
   FiCpu, FiGrid, FiServer, FiBell,
   FiUser, FiSliders, FiActivity,
-  FiShield, FiEye,
+  FiShield, FiEye, FiMenu,
 } from "react-icons/fi";
 
 // ============================================================
@@ -86,7 +86,7 @@ function LiveClock() {
 // ============================================================
 // Componente principal
 // ============================================================
-export default function TopBarUserInfo({ currentPage }) {
+export default function TopBarUserInfo({ currentPage, onMenuOpen }) {
   const user    = getUser();
   const { theme } = useTheme();
 
@@ -101,8 +101,20 @@ export default function TopBarUserInfo({ currentPage }) {
         boxShadow: "0 4px 20px color-mix(in srgb, var(--color-primary) 35%, transparent)",
       }}
     >
+      {/* Hamburguesa — solo en móvil */}
+      {onMenuOpen && (
+        <button
+          onClick={onMenuOpen}
+          className="flex md:hidden items-center justify-center w-8 h-8 rounded-lg shrink-0 mr-1"
+          style={{ backgroundColor: "rgba(255,255,255,0.18)" }}
+          aria-label="Abrir menú"
+        >
+          <FiMenu size={16} color="#fff" />
+        </button>
+      )}
+
       {/* Título de la sección */}
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-3 min-w-0">
         <div
           className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
           style={{ backgroundColor: "rgba(255,255,255,0.18)" }}
@@ -117,8 +129,8 @@ export default function TopBarUserInfo({ currentPage }) {
         </div>
       </div>
 
-      {/* Lado derecho: reloj + usuario */}
-      <div className="flex items-center gap-4">
+      {/* Lado derecho: reloj + usuario — empuja al extremo */}
+      <div className="ml-auto flex items-center gap-4 shrink-0">
         <LiveClock />
 
         {user && (

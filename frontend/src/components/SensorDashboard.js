@@ -338,12 +338,12 @@ export default function SensorDashboard({ sensor, lastReading, isAdded, onClose,
         )}
 
         {/* ── Fila superior: info + selector de rango ── */}
-        <div className="flex flex-wrap items-stretch justify-between gap-4">
+        <div className="flex flex-col sm:flex-row flex-wrap items-stretch gap-4">
 
           {/* Ficha del sensor */}
           <div
             className="rounded-2xl border p-4 flex-1"
-            style={{ borderColor: "var(--color-border)", backgroundColor: "var(--color-card)", minWidth: 260 }}
+            style={{ borderColor: "var(--color-border)", backgroundColor: "var(--color-card)" }}
           >
             <p className="text-xs font-bold uppercase tracking-wider mb-3"
               style={{ color: "var(--color-primary)", opacity: 0.8 }}>
@@ -363,7 +363,7 @@ export default function SensorDashboard({ sensor, lastReading, isAdded, onClose,
           </div>
 
           {/* Valor actual + selector de rango */}
-          <div className="flex flex-col gap-3 self-stretch" style={{ minWidth: 260, maxWidth: 420 }}>
+          <div className="flex flex-col gap-3 self-stretch sm:w-auto sm:max-w-[420px] w-full">
             {/* Selector de rango */}
             <div className="rounded-2xl border p-3"
               style={{ borderColor: "var(--color-border)", backgroundColor: "var(--color-card)" }}>
@@ -454,7 +454,7 @@ export default function SensorDashboard({ sensor, lastReading, isAdded, onClose,
                 />
               </div>
             ) : (
-              <div className="grid grid-cols-6 gap-3 animate-pulse">
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 animate-pulse">
                 {[0,1,2,3,4,5].map(i => (
                   <div key={i} className="h-24 rounded-2xl"
                     style={{ backgroundColor: "var(--color-border)" }} />

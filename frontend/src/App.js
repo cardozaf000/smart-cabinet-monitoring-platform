@@ -37,6 +37,13 @@ const App = () => {
     return stored;
   });
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => localStorage.getItem("sidebar_collapsed") === "1");
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const [isMobile, setIsMobile] = useState(() => window.innerWidth < 768);
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, []);
 
   // --- Estado de sesión / datos ---
   const [user, setUser] = useState(null);
@@ -250,6 +257,9 @@ const App = () => {
           onNavigate={setCurrentPage}
           collapsed={sidebarCollapsed}
           setCollapsed={setSidebarCollapsed}
+          mobileOpen={mobileOpen}
+          setMobileOpen={setMobileOpen}
+          isMobile={isMobile}
         />
 
         <main
@@ -260,14 +270,14 @@ const App = () => {
           style={{
             backgroundColor: "var(--color-bg)",
             color: "var(--color-text)",
-            marginLeft: sidebarCollapsed ? "72px" : "240px",
+            marginLeft: isMobile ? 0 : (sidebarCollapsed ? "72px" : "240px"),
           }}
         >
           <div
             className="sticky top-0 z-30 pb-3 mb-4 border-b"
             style={{ backgroundColor: "var(--color-bg)", borderColor: "var(--color-border)" }}
           >
-            <TopBarUserInfo currentPage={currentPage} />
+            <TopBarUserInfo currentPage={currentPage} onMenuOpen={() => setMobileOpen(true)} />
           </div>
 
           <div className="max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8 pb-6">
@@ -306,6 +316,8 @@ const App = () => {
     [
       currentPage,
       sidebarCollapsed,
+      mobileOpen,
+      isMobile,
       sensors,
       lecturas,
       cabinets,

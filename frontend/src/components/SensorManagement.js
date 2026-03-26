@@ -403,12 +403,6 @@ const SensorManagement = ({ sensors = [], lecturas = [] }) => {
           }
         }
 
-        // Fusionar posiciones guardadas con los items fijos base
-        const mergedFixed = FIXED_ITEMS.map(f => {
-          const pos = fixedPositions[f.id];
-          return pos ? { ...f, ...pos } : f;
-        });
-
         const custom = rows
           .filter(w => !String(w.id || '').startsWith('fixed-'))
           .map(w => ({
@@ -430,7 +424,22 @@ const SensorManagement = ({ sensors = [], lecturas = [] }) => {
             gw: w.gw ?? undefined, gh: w.gh ?? undefined,
           }));
 
-        setDisplayItems([...mergedFixed, ...custom]);
+        // Fusionar posiciones: backend > localStorage (prev) > defecto
+        setDisplayItems(prev => {
+          const prevFixed = {};
+          for (const item of prev) {
+            if (FIXED_IDS.has(item.id)) prevFixed[item.id] = item;
+          }
+          const mergedFixed = FIXED_ITEMS.map(f => {
+            const backPos = fixedPositions[f.id];
+            // Si el backend tiene posición guardada (gx no null), úsala
+            if (backPos && backPos.gx != null) return { ...f, ...backPos };
+            // Si no, conserva la posición de localStorage (estado previo)
+            const prev_ = prevFixed[f.id];
+            return prev_ ? { ...f, gx: prev_.gx, gy: prev_.gy, gw: prev_.gw, gh: prev_.gh, colSpan: prev_.colSpan ?? f.colSpan } : f;
+          });
+          return [...mergedFixed, ...custom];
+        });
         widgetsSyncedRef.current = true;
       })
       .catch(() => { widgetsSyncedRef.current = true; });
@@ -709,7 +718,7 @@ const SensorManagement = ({ sensors = [], lecturas = [] }) => {
             </button>
 
             {showRangePicker && !fullscreen && (
-              <div className="absolute right-0 top-10 z-40 w-72 rounded-xl border shadow-2xl p-4 space-y-3"
+              <div className="absolute right-0 top-10 z-40 w-72 max-w-[calc(100vw-2rem)] rounded-xl border shadow-2xl p-4 space-y-3"
                 style={{ backgroundColor: 'var(--color-card)', borderColor: 'var(--color-border)' }}>
                 <p className="text-xs font-semibold uppercase opacity-50 tracking-wider">Rango global</p>
                 <div className="flex flex-wrap gap-1.5">

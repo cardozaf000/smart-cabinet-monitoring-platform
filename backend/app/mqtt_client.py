@@ -123,6 +123,52 @@ def _map_lecturas(payload: Dict[str, Any]) -> List[Dict[str, Any]]:
                 }
             })
 
+    if "pir" in payload:
+        s = payload["pir"]
+        out.append({
+            "sensor_id": "pir",
+            "nombre": "PIR",
+            "tipo": "movimiento",
+            "gabinete_id": gabinete_id,
+            "puerto": ch,
+            "lectura": {
+                "valor": 1 if s.get("detected") else 0,
+                "unidad": "estado",
+                "timestamp": ts
+            }
+        })
+
+    if "mq2" in payload:
+        s = payload["mq2"]
+        out.append({
+            "sensor_id": "mq2",
+            "nombre": "MQ-2",
+            "tipo": "humo",
+            "gabinete_id": gabinete_id,
+            "puerto": ch,
+            "lectura": {
+                "valor": s.get("ppm"),
+                "unidad": "ppm",
+                "timestamp": ts
+            }
+        })
+
+    if "rgb" in payload:
+        s = payload["rgb"]
+        # Almacena el estado on/off de la tira como lectura de estado
+        out.append({
+            "sensor_id": "rgb",
+            "nombre": "RGB",
+            "tipo": "estado",
+            "gabinete_id": gabinete_id,
+            "puerto": ch,
+            "lectura": {
+                "valor": 1 if s.get("on") else 0,
+                "unidad": "estado",
+                "timestamp": ts
+            }
+        })
+
     return out
 
 
