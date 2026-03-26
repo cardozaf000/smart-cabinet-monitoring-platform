@@ -375,6 +375,12 @@ const SensorManagement = ({ sensors = [], lecturas = [] }) => {
   const rangePickerRef   = useRef(null);
   const gridContainerRef = useRef(null);
   const [gridWidth, setGridWidth] = useState(() => window.innerWidth);
+  const [isMobile, setIsMobile] = useState(() => window.innerWidth < 768);
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener('resize', check);
+    return () => window.removeEventListener('resize', check);
+  }, []);
 
   /* ---- Historial acumulado ---- */
   const [history, setHistory] = useState(() => {
@@ -630,6 +636,14 @@ const SensorManagement = ({ sensors = [], lecturas = [] }) => {
     [displayItems]
   );
 
+  const mobileLayout = useMemo(() =>
+    displayItems.map((item, idx) => {
+      const h = item.gh ?? getDefaultH(item);
+      return { i: item.id, x: 0, y: idx * h, w: 2, h, minW: 1, minH: 1 };
+    }),
+    [displayItems]
+  );
+
   const dynamicCount = useMemo(() => displayItems.filter(i => i.type !== 'fixed').length, [displayItems]);
   const totalPanels  = displayItems.length;
 
@@ -714,7 +728,8 @@ const SensorManagement = ({ sensors = [], lecturas = [] }) => {
               }}
             >
               <FiClock size={13}/>
-              {globalRange ? globalRangeLabel : 'Rango de tiempo'}
+              <span className="hidden sm:inline">{globalRange ? globalRangeLabel : 'Rango de tiempo'}</span>
+              <span className="sm:hidden">{globalRange ? globalRangeLabel : 'Rango'}</span>
             </button>
 
             {showRangePicker && !fullscreen && (
@@ -765,10 +780,11 @@ const SensorManagement = ({ sensors = [], lecturas = [] }) => {
 
           <button
             onClick={() => setShowWizard(true)}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-white text-sm shadow-sm"
+            className="flex items-center gap-2 px-3 py-2 rounded-lg font-semibold text-white text-sm shadow-sm"
             style={{ backgroundColor: 'var(--color-primary)' }}
           >
-            + Añadir gráfico
+            <span className="hidden sm:inline">+ Añadir gráfico</span>
+            <span className="sm:hidden">+ Añadir</span>
           </button>
 
           <button
@@ -920,15 +936,15 @@ const SensorManagement = ({ sensors = [], lecturas = [] }) => {
         >
           <ReactGridLayout
             width={gridWidth}
-            layout={gridLayout}
-            cols={GRID_C}
+            layout={isMobile ? mobileLayout : gridLayout}
+            cols={isMobile ? 2 : GRID_C}
             rowHeight={ROW_H}
             onDragStop={onGridChange}
             onResizeStop={onGridChange}
-            isDraggable={editMode}
-            isResizable={editMode}
+            isDraggable={editMode && !isMobile}
+            isResizable={editMode && !isMobile}
             compactType="vertical"
-            margin={[8, 8]}
+            margin={isMobile ? [4, 4] : [8, 8]}
             containerPadding={[0, 0]}
             draggableHandle=".drag-handle"
           >
@@ -985,7 +1001,7 @@ const SensorManagement = ({ sensors = [], lecturas = [] }) => {
                 <th className="py-2.5 px-4 text-left font-semibold opacity-55">Estado</th>
                 <th className="py-2.5 px-4 text-left font-semibold opacity-55">Nombre</th>
                 <th className="py-2.5 px-4 text-left font-semibold opacity-55">Tipo</th>
-                <th className="py-2.5 px-4 text-left font-semibold opacity-55">Puerto</th>
+                <th className="py-2.5 px-4 text-left font-semibold opacity-55 hidden md:table-cell">Puerto</th>
                 <th className="py-2.5 px-4 text-left font-semibold opacity-55">Última lectura</th>
                 <th className="py-2.5 px-4 text-center font-semibold opacity-55">Estadísticas</th>
               </tr>
@@ -1016,7 +1032,7 @@ const SensorManagement = ({ sensors = [], lecturas = [] }) => {
                         <span className="w-2 h-2 rounded-full shrink-0"
                           style={{ backgroundColor: active ? '#10b981' : '#6b7280' }}
                           title={active ? 'Activo' : 'Sin datos recientes'}/>
-                        <span className="font-mono text-xs opacity-50">{sensor.id}</span>
+                        <span className="font-mono text-xs opacity-50 hidden sm:inline">{sensor.id}</span>
                       </div>
                     </td>
                     <td className="py-3 px-4">
@@ -1025,7 +1041,7 @@ const SensorManagement = ({ sensors = [], lecturas = [] }) => {
                     <td className="py-3 px-4">
                       <TypeBadge type={sensor.type} />
                     </td>
-                    <td className="py-3 px-4">
+                    <td className="py-3 px-4 hidden md:table-cell">
                       <span className="font-mono text-xs opacity-55">{sensor.puerto ?? '—'}</span>
                     </td>
                     <td className="py-3 px-4">
