@@ -264,17 +264,24 @@ const CabinetManagement = ({ cabinets = [], sensors = [] }) => {
     lastCmdRef.current = now;
     const st = strips[stripId] || DEFAULT_STRIP;
     const [r, g, b] = hexToRgb(st.fixedColor);
+    const payload = {
+      type: "led_strip",
+      mode: st.enabled ? mode : "off",
+      strip_id: stripId,
+      position: getStripPosition(stripId),
+      gabinete_id: cabinetData.id || "cab-1",
+      rgb: mode === 'off' ? [0, 0, 0] : [r, g, b],
+      ...extra,
+    };
     try {
-      await postJSON("/led_cmd", {
-        type: "led_strip",
-        mode: st.enabled ? mode : "off",
-        strip_id: stripId,
-        position: getStripPosition(stripId),
-        gabinete_id: cabinetData.id || "cab-1",
-        rgb: mode === 'off' ? [0, 0, 0] : [r, g, b],
-        ...extra,
+      // text/plain no dispara preflight CORS, evitando el bloqueo de OPTIONS
+      await fetch(`${BACKEND_URL}/led_cmd`, {
+        method: "POST",
+        mode: "no-cors",
+        headers: { "Content-Type": "text/plain" },
+        body: JSON.stringify(payload),
       });
-    } catch { alert("No se pudo enviar el comando LED."); }
+    } catch { /* network error — silently ignore */ }
   }, [strips, cabinetData.id, getStripPosition]);
 
   /* ---- Posiciones en el rack ---- */
@@ -610,7 +617,7 @@ const CabinetManagement = ({ cabinets = [], sensors = [] }) => {
             <div className="px-4 py-3 border-b" style={{ borderColor: "var(--color-border)" }}>
               <h2 className="text-sm font-semibold tracking-wide uppercase opacity-70">Equipos y sensores</h2>
             </div>
-            <div className="divide-y" style={{ borderColor: "var(--color-border)" }}>
+            <div className="divide-y overflow-y-auto" style={{ borderColor: "var(--color-border)", maxHeight: "calc(3 * 52px)" }}>
               {allDevices.map(device => {
                 const placed = !!placements[device.id];
                 const pos    = placements[device.id];
