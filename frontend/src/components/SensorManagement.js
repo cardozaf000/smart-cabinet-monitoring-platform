@@ -625,21 +625,22 @@ const SensorManagement = ({ sensors = [], lecturas = [] }) => {
 
   const gridLayout = useMemo(() =>
     displayItems.map((item, idx) => ({
-      i:    item.id,
-      x:    item.gx ?? (idx % 3) * 4,
-      y:    item.gy ?? Math.floor(idx / 3) * getDefaultH(item),
-      w:    item.gw ?? (item.colSpan === 3 ? 12 : item.colSpan === 2 ? 8 : 4),
-      h:    item.gh ?? getDefaultH(item),
-      minW: 1,
-      minH: item.chartType === 'heatmap' ? 2 : 1,
+      i:      item.id,
+      x:      item.gx ?? (idx % 3) * 4,
+      y:      item.gy ?? Math.floor(idx / 3) * getDefaultH(item),
+      w:      item.gw ?? (item.colSpan === 3 ? 12 : item.colSpan === 2 ? 8 : 4),
+      h:      item.gh ?? getDefaultH(item),
+      minW:   1,
+      minH:   item.chartType === 'heatmap' ? 2 : 1,
+      static: !editMode,
     })),
-    [displayItems]
+    [displayItems, editMode]
   );
 
   const mobileLayout = useMemo(() =>
     displayItems.map((item, idx) => {
       const h = item.gh ?? getDefaultH(item);
-      return { i: item.id, x: 0, y: idx * h, w: 2, h, minW: 1, minH: 1 };
+      return { i: item.id, x: 0, y: idx * h, w: 2, h, minW: 1, minH: 1, static: true };
     }),
     [displayItems]
   );

@@ -18,7 +18,13 @@ def led_cmd():
         resp.headers["Access-Control-Max-Age"] = "600"
         resp.headers["Vary"] = "Origin"
         return resp
-    data = request.get_json(silent=True) or {}
+    # Acepta JSON normal y también text/plain (no-cors workaround del frontend)
+    data = request.get_json(silent=True)
+    if data is None:
+        try:
+            data = json.loads(request.get_data(as_text=True) or '{}')
+        except Exception:
+            data = {}
 
     mode        = data.get("mode", "off")
     rgb         = data.get("rgb", [0, 0, 0])

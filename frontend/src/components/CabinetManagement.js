@@ -849,31 +849,23 @@ function Rack3D({ uCount = 42, leftStrip = null, rightStrip = null, leftSelected
   const U_H   = MNT_H / uCount;
 
   return (
-    <div style={{ perspective: "1100px", perspectiveOrigin: "50% 38%" }}>
-      <div style={{ width: W, height: H, position: "relative", transformStyle: "preserve-3d", transform: "rotateX(8deg) rotateY(-20deg)" }}>
-
-        {/* CARA FRONTAL */}
+    <div style={{ perspective: "900px", perspectiveOrigin: "50% 42%" }}>
+      <div style={{ width: W, height: H, transform: "rotateX(4deg) rotateY(-14deg)", borderRadius: 6, overflow: "hidden", boxShadow: "0 24px 60px rgba(0,0,0,0.7), 0 8px 20px rgba(0,0,0,0.5)" }}>
         <div style={{
-          position: "absolute", inset: 0,
+          width: W, height: H, position: "relative",
           background: "linear-gradient(180deg, #1b2338 0%, #141b2c 55%, #0f1420 100%)",
           border: "2px solid #26334e",
-          borderRadius: 5, overflow: "hidden",
-          boxShadow: "inset 0 0 55px rgba(0,0,0,0.55), inset 0 2px 0 rgba(255,255,255,0.05)",
+          overflow: "hidden",
         }}>
-
-          {/* Rails con tiras LED */}
           <RackRail side="left"  uCount={uCount} mountTop={MNT_T} uH={U_H} strip={leftStrip}  selected={leftSelected}  />
           <RackRail side="right" uCount={uCount} mountTop={MNT_T} uH={U_H} strip={rightStrip} selected={rightSelected} />
 
-          {/* Panel de montaje */}
           <div style={{
             position: "absolute",
             left: RAIL, right: RAIL, top: MNT_T, bottom: MNT_B,
-            background: "#08101a",
-            border: "1px solid #162030",
+            background: "#08101a", border: "1px solid #162030",
             borderRadius: 2, overflow: "hidden",
           }}>
-            {/* Líneas de U slots */}
             {Array.from({ length: uCount }).map((_, i) => (
               <div key={i} style={{
                 position: "absolute", top: i * U_H, left: 0, right: 0, height: U_H,
@@ -881,19 +873,15 @@ function Rack3D({ uCount = 42, leftStrip = null, rightStrip = null, leftSelected
                 boxSizing: "border-box",
               }}>
                 {(i + 1) % 6 === 0 && (
-                  <span style={{ position: "absolute", right: 3, bottom: 1, fontSize: 5.5, color: "#243348", userSelect: "none", fontFamily: "monospace" }}>
-                    U{i + 1}
-                  </span>
+                  <span style={{ position: "absolute", right: 3, bottom: 1, fontSize: 5.5, color: "#243348", userSelect: "none", fontFamily: "monospace" }}>U{i + 1}</span>
                 )}
               </div>
             ))}
-            {/* Equipos y sensores */}
             {placedDevices.map(dev => (
               <RackDevice key={dev.id} dev={dev} uCount={uCount} mountH={MNT_H} panelW={MNT_W} />
             ))}
           </div>
 
-          {/* Tornillos en esquinas */}
           {[[5,5],[W-9,5],[5,H-9],[W-9,H-9]].map(([cx,cy],i) => (
             <div key={i} style={{
               position: "absolute", left: cx-4, top: cy-4, width: 8, height: 8,
@@ -905,7 +893,6 @@ function Rack3D({ uCount = 42, leftStrip = null, rightStrip = null, leftSelected
             </div>
           ))}
 
-          {/* Etiqueta inferior */}
           <div style={{
             position: "absolute", bottom: 3, left: RAIL, right: RAIL,
             textAlign: "center", fontSize: 5.5, color: "#1e2d40",
@@ -914,32 +901,6 @@ function Rack3D({ uCount = 42, leftStrip = null, rightStrip = null, leftSelected
             {uCount}U RACK · FRONT
           </div>
         </div>
-
-        {/* Cara lateral derecha */}
-        <div style={{
-          position: "absolute", width: DEPTH, height: H, left: W, top: 0,
-          transform: `rotateY(90deg) translateZ(${DEPTH/2}px) translateX(${-DEPTH/2}px)`,
-          transformOrigin: "left center",
-          background: "linear-gradient(to right, #0d1825 0%, #111e30 45%, #091016 100%)",
-          border: "1px solid #182030", pointerEvents: "none", overflow: "hidden",
-        }}>
-          {Array.from({ length: 7 }).map((_, i) => (
-            <div key={i} style={{
-              position: "absolute", top: 16 + i * (H - 32) / 7,
-              left: 6, right: 6, height: 3,
-              background: "#070e18", borderRadius: 1, border: "1px solid #121c28",
-            }} />
-          ))}
-        </div>
-
-        {/* Cara superior */}
-        <div style={{
-          position: "absolute", width: W, height: DEPTH, top: -DEPTH,
-          transform: `rotateX(90deg) translateZ(${-DEPTH/2}px) translateY(${-DEPTH/2}px)`,
-          transformOrigin: "bottom center",
-          background: "linear-gradient(to bottom, #070c16 0%, #0e1826 100%)",
-          border: "1px solid #182030", pointerEvents: "none",
-        }} />
       </div>
     </div>
   );
@@ -949,7 +910,7 @@ function Rack3D({ uCount = 42, leftStrip = null, rightStrip = null, leftSelected
    RACK 3D (TRASERA)
 ============================================================ */
 function Rack3DBack({ uCount = 42, leftStrip = null, rightStrip = null, leftSelected = false, rightSelected = false, placedDevices = [] }) {
-  const W = 230, H = 520, DEPTH = 68;
+  const W = 230, H = 520;
   const RAIL = 22;
   const MNT_T = 14, MNT_B = 14;
   const MNT_H = H - MNT_T - MNT_B;
@@ -957,31 +918,23 @@ function Rack3DBack({ uCount = 42, leftStrip = null, rightStrip = null, leftSele
   const U_H   = MNT_H / uCount;
 
   return (
-    <div style={{ perspective: "1100px", perspectiveOrigin: "50% 38%" }}>
-      <div style={{ width: W, height: H, position: "relative", transformStyle: "preserve-3d", transform: "rotateX(8deg) rotateY(160deg)" }}>
-
-        {/* CARA TRASERA */}
+    <div style={{ perspective: "900px", perspectiveOrigin: "50% 42%" }}>
+      <div style={{ width: W, height: H, transform: "rotateX(4deg) rotateY(14deg)", borderRadius: 6, overflow: "hidden", boxShadow: "0 24px 60px rgba(0,0,0,0.7), 0 8px 20px rgba(0,0,0,0.5)" }}>
         <div style={{
-          position: "absolute", inset: 0,
+          width: W, height: H, position: "relative",
           background: "linear-gradient(180deg, #141c2e 0%, #0f1520 55%, #0b1018 100%)",
           border: "2px solid #20303f",
-          borderRadius: 5, overflow: "hidden",
-          boxShadow: "inset 0 0 55px rgba(0,0,0,0.65), inset 0 1px 0 rgba(255,255,255,0.04)",
+          overflow: "hidden",
         }}>
-
-          {/* Rails con tiras LED */}
           <RackRail side="left"  uCount={uCount} mountTop={MNT_T} uH={U_H} strip={leftStrip}  selected={leftSelected}  />
           <RackRail side="right" uCount={uCount} mountTop={MNT_T} uH={U_H} strip={rightStrip} selected={rightSelected} />
 
-          {/* Panel trasero: gestión de cables + equipos */}
           <div style={{
             position: "absolute",
             left: RAIL, right: RAIL, top: MNT_T, bottom: MNT_B,
-            background: "#060d16",
-            border: "1px solid #141e2c",
+            background: "#060d16", border: "1px solid #141e2c",
             borderRadius: 2, overflow: "hidden",
           }}>
-            {/* Guías de cable horizontales */}
             {Array.from({ length: 10 }).map((_, i) => (
               <div key={i} style={{
                 position: "absolute",
@@ -992,7 +945,6 @@ function Rack3DBack({ uCount = 42, leftStrip = null, rightStrip = null, leftSele
                 boxShadow: "0 1px 3px rgba(0,0,0,0.7)",
               }} />
             ))}
-            {/* Canales verticales */}
             {[0.24, 0.5, 0.76].map((f, i) => (
               <div key={i} style={{
                 position: "absolute", top: 8, bottom: 8,
@@ -1000,13 +952,9 @@ function Rack3DBack({ uCount = 42, leftStrip = null, rightStrip = null, leftSele
                 background: "#0a1420", border: "1px solid #162030", borderRadius: 2,
               }} />
             ))}
-
-            {/* Equipos en cara trasera */}
             {placedDevices.map(dev => (
               <RackDevice key={dev.id} dev={dev} uCount={uCount} mountH={MNT_H} panelW={MNT_W} isBack />
             ))}
-
-            {/* Etiqueta cable management */}
             <div style={{
               position: "absolute", bottom: 8, left: 0, right: 0,
               textAlign: "center", fontSize: 5.5, color: "#182030",
@@ -1016,7 +964,6 @@ function Rack3DBack({ uCount = 42, leftStrip = null, rightStrip = null, leftSele
             </div>
           </div>
 
-          {/* Tornillos */}
           {[[5,5],[W-9,5],[5,H-9],[W-9,H-9]].map(([cx,cy],i) => (
             <div key={i} style={{
               position: "absolute", left: cx-4, top: cy-4, width: 8, height: 8,
@@ -1028,7 +975,6 @@ function Rack3DBack({ uCount = 42, leftStrip = null, rightStrip = null, leftSele
             </div>
           ))}
 
-          {/* Etiqueta inferior */}
           <div style={{
             position: "absolute", bottom: 3, left: RAIL, right: RAIL,
             textAlign: "center", fontSize: 5.5, color: "#172030",
@@ -1037,32 +983,6 @@ function Rack3DBack({ uCount = 42, leftStrip = null, rightStrip = null, leftSele
             {uCount}U RACK · REAR
           </div>
         </div>
-
-        {/* Cara lateral derecha */}
-        <div style={{
-          position: "absolute", width: DEPTH, height: H, left: W, top: 0,
-          transform: `rotateY(90deg) translateZ(${DEPTH/2}px) translateX(${-DEPTH/2}px)`,
-          transformOrigin: "left center",
-          background: "linear-gradient(to right, #0a1520 0%, #0e1a28 45%, #08100e 100%)",
-          border: "1px solid #141e2c", pointerEvents: "none", overflow: "hidden",
-        }}>
-          {Array.from({ length: 7 }).map((_, i) => (
-            <div key={i} style={{
-              position: "absolute", top: 16 + i * (H - 32) / 7,
-              left: 6, right: 6, height: 3,
-              background: "#060c14", borderRadius: 1, border: "1px solid #101820",
-            }} />
-          ))}
-        </div>
-
-        {/* Cara superior */}
-        <div style={{
-          position: "absolute", width: W, height: DEPTH, top: -DEPTH,
-          transform: `rotateX(90deg) translateZ(${-DEPTH/2}px) translateY(${-DEPTH/2}px)`,
-          transformOrigin: "bottom center",
-          background: "linear-gradient(to bottom, #060b14 0%, #0c1622 100%)",
-          border: "1px solid #141e2c", pointerEvents: "none",
-        }} />
       </div>
     </div>
   );
