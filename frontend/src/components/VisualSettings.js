@@ -6,7 +6,7 @@ import {
   FiSun, FiMoon, FiTrash2, FiPlus, FiChevronDown, FiChevronRight,
   FiRefreshCcw,
 } from "react-icons/fi";
-import { BACKEND } from "../utils/api";
+import { BACKEND, resolveLogoUrl } from "../utils/api";
 import { authHeader } from "../utils/auth";
 
 // ============================================================
@@ -29,7 +29,6 @@ function toAccent(hex) {
 // ThemeCard
 // ============================================================
 function ThemeCard({ t, isActive, onApply, onDelete, deleteConfirm, onAskDelete, onCancelDelete }) {
-  const isBuiltin = Object.keys(builtinThemes).includes(t.key);
 
   return (
     <div
@@ -52,7 +51,7 @@ function ThemeCard({ t, isActive, onApply, onDelete, deleteConfirm, onAskDelete,
       <div className="p-4 flex items-center gap-3 flex-1">
         {t.logo ? (
           <img
-            src={t.logo}
+            src={resolveLogoUrl(t.logo)}
             alt={t.name}
             className="w-9 h-9 object-contain rounded"
             style={{ background: "color-mix(in srgb, var(--color-primary) 12%, white)" }}
@@ -95,7 +94,7 @@ function ThemeCard({ t, isActive, onApply, onDelete, deleteConfirm, onAskDelete,
           {isActive ? "Tema activo" : "Aplicar"}
         </button>
 
-        {!isBuiltin && (
+        {t.key !== "default" && (
           deleteConfirm === t.key ? (
             <div className="flex gap-1">
               <button
@@ -145,8 +144,7 @@ function LogoSlot({ label, description, value, onChange }) {
       const res = await fetch(`${BACKEND}/upload_logo`, { method: "POST", body: fd });
       const data = await res.json();
       if (!res.ok || !data.url) throw new Error(data.error || "Error al subir");
-      const url = data.url.startsWith("http") ? data.url : `${BACKEND}${data.url}`;
-      onChange(url);
+      onChange(data.url);
     } catch (err) {
       alert("Error al subir imagen: " + err.message);
     } finally {
@@ -173,7 +171,7 @@ function LogoSlot({ label, description, value, onChange }) {
         style={{ backgroundColor: "var(--color-card)", borderColor: "var(--color-border)" }}
       >
         {value ? (
-          <img src={value} alt="logo preview" className="max-h-16 max-w-full object-contain" />
+          <img src={resolveLogoUrl(value)} alt="logo preview" className="max-h-16 max-w-full object-contain" />
         ) : (
           <FiImage size={28} className="opacity-20" />
         )}
@@ -293,7 +291,7 @@ export default function VisualSettings() {
 
   // ---- eliminar tema ----
   const handleDelete = async (key) => {
-    await fetch(`${BACKEND}/themes/${key}`, { method: "DELETE" });
+    await fetch(`${BACKEND}/themes/${key}`, { method: "DELETE", headers: authHeader() });
     const updated = { ...dbThemes };
     delete updated[key];
     setDbThemes(updated);
@@ -315,7 +313,7 @@ export default function VisualSettings() {
         const res = await fetch(`${BACKEND}/upload_logo`, { method: "POST", body: fd });
         const data = await res.json();
         if (!res.ok || !data.url) throw new Error("Error al subir logo");
-        logo = data.url.startsWith("http") ? data.url : `${BACKEND}${data.url}`;
+        logo = data.url;
       }
 
       await fetch(`${BACKEND}/themes`, {

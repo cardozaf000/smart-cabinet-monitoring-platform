@@ -6,7 +6,7 @@ import {
   FiCpu, FiBell, FiShield, FiServer, FiGrid,
   FiSun, FiMoon,
 } from "react-icons/fi";
-import { BACKEND } from "../utils/api";
+import { BACKEND, resolveLogoUrl } from "../utils/api";
 import { useTheme } from "../theme/ThemeProvider";
 
 // ============================================================
@@ -128,7 +128,7 @@ export default function LoginPage({ onLogin }) {
           {/* Logo branding */}
           {branding.login_logo ? (
             <img
-              src={branding.login_logo}
+              src={resolveLogoUrl(branding.login_logo)}
               alt="Logo"
               className="h-14 object-contain mb-8 self-start"
               onError={(e) => { e.currentTarget.style.display = "none"; }}

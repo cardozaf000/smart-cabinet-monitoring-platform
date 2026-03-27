@@ -20,7 +20,7 @@ import LoginPage from "./components/LoginPage";
 
 import { useTheme } from "./theme/ThemeProvider";
 import { updateItemInList, deleteItemFromList, addItemToList } from "./utils/helpers";
-import { isAuthenticated, getUser, authHeader } from "./utils/auth";
+import { isAuthenticated, getUser, authHeader, logout, getTokenExpiry } from "./utils/auth";
 import { BACKEND } from "./utils/api"; // ✅ usa la API centralizada
 
 // ==========================================================
@@ -70,6 +70,22 @@ const App = () => {
     if (u) setUser(u);
   }, []);
 
+  // --- Auto-logout cuando expira el JWT ---
+  useEffect(() => {
+    if (!isAuthenticated()) return;
+    const expiry = getTokenExpiry();
+    if (!expiry) return;
+    const remaining = expiry - Date.now();
+    if (remaining <= 0) {
+      logout().then(() => { window.location.href = "/login"; });
+      return;
+    }
+    const t = setTimeout(() => {
+      logout().then(() => { window.location.href = "/login"; });
+    }, remaining);
+    return () => clearTimeout(t);
+  }, []);
+
   // --- Cargar gabinetes desde backend ---
   useEffect(() => {
     if (!isAuthenticated()) return;
@@ -91,7 +107,7 @@ const App = () => {
   // 🔁 Polling de sensores
   // ==========================================================
   useEffect(() => {
-    if (!isAuthenticated() || currentPage !== "sensors") return;
+    if (!isAuthenticated() || (currentPage !== "sensors" && currentPage !== "cabinets")) return;
 
     let isMounted = true;
     const controller = new AbortController();
@@ -295,6 +311,7 @@ const App = () => {
             {currentPage === "cabinets" && (
               <CabinetManagement
                 cabinets={cabinets}
+                sensors={sensors}
                 onAddCabinet={handleAddCabinet}
                 onUpdateCabinet={handleUpdateCabinet}
                 onDeleteCabinet={handleDeleteCabinet}

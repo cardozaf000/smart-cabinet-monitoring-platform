@@ -31,3 +31,13 @@ export function authHeader() {
   const t = getToken();
   return t ? { Authorization: `Bearer ${t}` } : {};
 }
+
+// Devuelve el timestamp (ms) de expiración del JWT, o null si no se puede leer.
+export function getTokenExpiry() {
+  const token = getToken();
+  if (!token) return null;
+  try {
+    const payload = JSON.parse(atob(token.split(".")[1]));
+    return payload.exp ? payload.exp * 1000 : null;
+  } catch { return null; }
+}

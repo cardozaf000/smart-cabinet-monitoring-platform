@@ -8,7 +8,7 @@ import {
   FiUser, FiEye, FiAlertOctagon, FiArchive,
 } from "react-icons/fi";
 import { useTheme } from "../theme/ThemeProvider";
-import { BACKEND } from "../utils/api";
+import { BACKEND, resolveLogoUrl } from "../utils/api";
 
 // ============================================================
 // Navegación
@@ -218,11 +218,11 @@ export default function LayoutHeader({ currentPage, onNavigate, collapsed, setCo
     fetch(`${BACKEND}/branding`)
       .then((r) => r.json())
       .then((d) => {
-        setLogoSrc(d.sidebar_logo || theme.logo || "");
+        setLogoSrc(resolveLogoUrl(d.sidebar_logo || theme.logo || ""));
         setAppName(d.app_name    || theme.name  || "");
       })
       .catch(() => {
-        setLogoSrc(theme.logo || "");
+        setLogoSrc(resolveLogoUrl(theme.logo || ""));
         setAppName(theme.name || "");
       });
   }, [theme.logo, theme.name]);
