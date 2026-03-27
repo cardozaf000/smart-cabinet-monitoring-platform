@@ -197,6 +197,12 @@ const CabinetManagement = ({ cabinets = [], sensors = [] }) => {
   /* ---- Strip count ---- */
   const [stripCount, setStripCount] = useState(() => parseInt(localStorage.getItem('rgb_strip_count') || '2', 10));
 
+  /* ---- Strip position config ---- */
+  // strip1Position: para 1 sola tira, su posición física
+  const [strip1Position, setStrip1Position] = useState(() => localStorage.getItem('rgb_strip1_pos') || 'front-left');
+  // strip2Face: para 2 tiras, en qué cara van (front o back)
+  const [strip2Face, setStrip2Face] = useState(() => localStorage.getItem('rgb_strip2_face') || 'front');
+
   /* ---- Per-strip state ---- */
   const [strips, setStrips] = useState(() => {
     try {
@@ -212,7 +218,45 @@ const CabinetManagement = ({ cabinets = [], sensors = [] }) => {
   const strip = strips[selectedStripId] || DEFAULT_STRIP;
   const setStrip = (patch) => setStrips(prev => prev.map((s, i) => i === selectedStripId ? { ...s, ...patch } : s));
 
+  /* ---- Calcula qué tira va a cada lado de cada cara ---- */
+  const getFaceStrips = useCallback((face) => {
+    const DS = DEFAULT_STRIP;
+    if (stripCount === 1) {
+      const s0 = strips[0] || DS;
+      if (face === 'front') return {
+        leftStrip: strip1Position === 'front-left'  ? s0 : null, leftId: strip1Position === 'front-left'  ? 0 : null,
+        rightStrip: strip1Position === 'front-right' ? s0 : null, rightId: strip1Position === 'front-right' ? 0 : null,
+      };
+      return {
+        leftStrip: strip1Position === 'back-left'  ? s0 : null, leftId: strip1Position === 'back-left'  ? 0 : null,
+        rightStrip: strip1Position === 'back-right' ? s0 : null, rightId: strip1Position === 'back-right' ? 0 : null,
+      };
+    }
+    if (stripCount === 2) {
+      const active = strip2Face === face;
+      return {
+        leftStrip: active ? (strips[0] || DS) : null, leftId: active ? 0 : null,
+        rightStrip: active ? (strips[1] || DS) : null, rightId: active ? 1 : null,
+      };
+    }
+    // 4 tiras
+    if (face === 'front') return {
+      leftStrip: strips[0] || DS, leftId: 0,
+      rightStrip: strips[1] || DS, rightId: 1,
+    };
+    return {
+      leftStrip: strips[2] || DS, leftId: 2,
+      rightStrip: strips[3] || DS, rightId: 3,
+    };
+  }, [strips, stripCount, strip1Position, strip2Face]);
+
   const lastCmdRef = React.useRef(0);
+
+  const getStripPosition = useCallback((id) => {
+    if (stripCount === 1) return strip1Position;
+    if (stripCount === 2) return `${strip2Face}-${id === 0 ? 'left' : 'right'}`;
+    return ['front-left', 'front-right', 'back-left', 'back-right'][id] || 'front-left';
+  }, [stripCount, strip1Position, strip2Face]);
 
   const sendLedCommand = useCallback(async (stripId, mode, extra = {}) => {
     const now = Date.now();
@@ -225,15 +269,13 @@ const CabinetManagement = ({ cabinets = [], sensors = [] }) => {
         type: "led_strip",
         mode: st.enabled ? mode : "off",
         strip_id: stripId,
+        position: getStripPosition(stripId),
         gabinete_id: cabinetData.id || "cab-1",
         rgb: mode === 'off' ? [0, 0, 0] : [r, g, b],
         ...extra,
       });
     } catch { alert("No se pudo enviar el comando LED."); }
-  }, [strips, cabinetData.id]);
-
-  /* ---- Rack view ---- */
-  const [rackView, setRackView] = useState('front');
+  }, [strips, cabinetData.id, getStripPosition]);
 
   /* ---- Posiciones en el rack ---- */
   const [placements, setPlacements] = useState(() => {
@@ -390,149 +432,158 @@ const CabinetManagement = ({ cabinets = [], sensors = [] }) => {
           {/* Control LED */}
           <div className="rounded-2xl border overflow-hidden" style={{ backgroundColor: "var(--color-card)", borderColor: "var(--color-border)" }}>
 
-            {/* Header row: title + strip count selector */}
+            {/* Header: title + count selector */}
             <div className="flex items-center justify-between px-4 py-3 border-b" style={{ borderColor: "var(--color-border)" }}>
               <span className="text-sm font-semibold">Tiras LED</span>
-              <div className="flex items-center gap-1.5">
-                <span className="text-[11px] opacity-40">Configurar tiras</span>
-                <select
-                  value={stripCount}
-                  onChange={e => {
-                    const v = parseInt(e.target.value, 10);
-                    setStripCount(v);
-                    localStorage.setItem('rgb_strip_count', String(v));
-                    if (selectedStripId >= v) setSelectedStripId(0);
-                  }}
-                  className="text-xs px-2 py-1 rounded-lg"
-                  style={{ backgroundColor: "var(--color-bg)", color: "var(--color-text)", border: "1px solid var(--color-border)" }}
-                >
-                  <option value={1}>1 tira</option>
-                  <option value={2}>2 tiras</option>
-                  <option value={4}>4 tiras</option>
-                </select>
+              <select
+                value={stripCount}
+                onChange={e => {
+                  const v = parseInt(e.target.value, 10);
+                  setStripCount(v);
+                  localStorage.setItem('rgb_strip_count', String(v));
+                  if (selectedStripId >= v) setSelectedStripId(0);
+                }}
+                className="text-xs px-2 py-1 rounded-lg"
+                style={{ backgroundColor: "var(--color-bg)", color: "var(--color-text)", border: "1px solid var(--color-border)" }}
+              >
+                <option value={1}>1 tira</option>
+                <option value={2}>2 tiras</option>
+                <option value={4}>4 tiras</option>
+              </select>
+            </div>
+
+            {/* Posición (1 tira) */}
+            {stripCount === 1 && (
+              <div className="px-4 pt-3 pb-1">
+                <p className="text-[11px] opacity-40 mb-1.5">Posición</p>
+                <div className="grid grid-cols-2 gap-1">
+                  {[
+                    { id: 'front-left', label: 'Frente Izq' },
+                    { id: 'front-right', label: 'Frente Der' },
+                    { id: 'back-left', label: 'Trasera Izq' },
+                    { id: 'back-right', label: 'Trasera Der' },
+                  ].map(p => (
+                    <button key={p.id}
+                      onClick={() => { setStrip1Position(p.id); localStorage.setItem('rgb_strip1_pos', p.id); }}
+                      className="px-2 py-1.5 rounded-lg text-xs font-medium border transition-all"
+                      style={{
+                        backgroundColor: strip1Position === p.id ? "color-mix(in srgb,var(--color-primary) 12%,transparent)" : "transparent",
+                        borderColor: strip1Position === p.id ? "var(--color-primary)" : "var(--color-border)",
+                        color: strip1Position === p.id ? "var(--color-primary)" : "var(--color-text)",
+                      }}>
+                      {p.label}
+                    </button>
+                  ))}
+                </div>
               </div>
-            </div>
+            )}
 
-            {/* Strip selector buttons */}
-            <div className="flex gap-2 px-4 pt-3 pb-1">
-              {Array.from({ length: stripCount }).map((_, i) => {
-                const st = strips[i] || DEFAULT_STRIP;
-                const dotColor = st.enabled ? st.fixedColor : "#4b5563";
-                const isSelected = selectedStripId === i;
-                return (
-                  <button
-                    key={i}
-                    onClick={() => setSelectedStripId(i)}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-all"
+            {/* Cara (2 tiras) */}
+            {stripCount === 2 && (
+              <div className="flex items-center gap-2 px-4 pt-3 pb-1">
+                <span className="text-[11px] opacity-40">Panel:</span>
+                {[{ id: 'front', label: 'Frente' }, { id: 'back', label: 'Trasera' }].map(f => (
+                  <button key={f.id}
+                    onClick={() => { setStrip2Face(f.id); localStorage.setItem('rgb_strip2_face', f.id); }}
+                    className="px-3 py-1 rounded-lg text-xs font-medium border transition-all"
                     style={{
-                      backgroundColor: isSelected ? "color-mix(in srgb,var(--color-primary) 12%,transparent)" : "transparent",
-                      borderColor: isSelected ? "var(--color-primary)" : "var(--color-border)",
-                      color: isSelected ? "var(--color-primary)" : "var(--color-text)",
-                    }}
-                  >
-                    <span style={{
-                      width: 8, height: 8, borderRadius: "50%", flexShrink: 0,
-                      backgroundColor: dotColor,
-                      boxShadow: st.enabled ? `0 0 5px ${dotColor}` : "none",
-                      display: "inline-block",
-                    }} />
-                    Tira {i + 1}
+                      backgroundColor: strip2Face === f.id ? "color-mix(in srgb,var(--color-primary) 12%,transparent)" : "transparent",
+                      borderColor: strip2Face === f.id ? "var(--color-primary)" : "var(--color-border)",
+                      color: strip2Face === f.id ? "var(--color-primary)" : "var(--color-text)",
+                    }}>
+                    {f.label}
                   </button>
-                );
-              })}
-            </div>
+                ))}
+              </div>
+            )}
 
-            {/* Selected strip config */}
+            {/* Selector de tira (2 o 4 tiras) */}
+            {stripCount > 1 && (
+              <div className="flex gap-1.5 px-4 pt-2 pb-1 flex-wrap">
+                {Array.from({ length: stripCount }).map((_, i) => {
+                  const st = strips[i] || DEFAULT_STRIP;
+                  const dotColor = st.enabled ? st.fixedColor : "#4b5563";
+                  const isSelected = selectedStripId === i;
+                  const label = stripCount === 4
+                    ? ['F-Izq', 'F-Der', 'T-Izq', 'T-Der'][i]
+                    : ['Izq', 'Der'][i];
+                  return (
+                    <button key={i} onClick={() => setSelectedStripId(i)}
+                      className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-all"
+                      style={{
+                        backgroundColor: isSelected ? "color-mix(in srgb,var(--color-primary) 12%,transparent)" : "transparent",
+                        borderColor: isSelected ? "var(--color-primary)" : "var(--color-border)",
+                        color: isSelected ? "var(--color-primary)" : "var(--color-text)",
+                      }}>
+                      <span style={{ width: 8, height: 8, borderRadius: "50%", flexShrink: 0, backgroundColor: dotColor, boxShadow: st.enabled ? `0 0 5px ${dotColor}` : "none", display: "inline-block" }} />
+                      {label}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Config de la tira seleccionada */}
             <div className="px-4 pb-4 pt-2 space-y-3">
               <div className="flex items-center justify-between py-1">
-                <span className="text-xs font-semibold opacity-60">Tira {selectedStripId + 1}</span>
+                <span className="text-xs font-semibold opacity-60">
+                  {stripCount === 1 ? 'Tira' : stripCount === 4 ? ['F-Izq','F-Der','T-Izq','T-Der'][selectedStripId] : (strip2Face === 'front' ? 'Frente ' : 'Trasera ') + ['Izq','Der'][selectedStripId]}
+                </span>
                 <div className="flex items-center gap-2">
                   <span className="text-xs opacity-40">{strip.enabled ? "Encendida" : "Apagada"}</span>
-                  <ToggleSwitch
-                    small
-                    enabled={strip.enabled}
+                  <ToggleSwitch small enabled={strip.enabled}
                     onChange={(v) => {
                       setStrip({ enabled: v, mode: v ? 'fixed' : 'off' });
                       sendLedCommand(selectedStripId, v ? 'fixed' : 'off', { rgb: v ? hexToRgb(strip.fixedColor) : [0, 0, 0] });
-                    }}
-                  />
+                    }} />
                 </div>
               </div>
 
-              {/* Mode tab buttons */}
+              {/* Modo */}
               <div>
                 <p className="text-[11px] opacity-40 mb-1.5">Modo</p>
                 <div className="flex flex-wrap gap-1">
                   {MODES.map(m => (
-                    <button
-                      key={m.id}
-                      onClick={() => handleModeClick(m.id)}
-                      title={m.desc}
+                    <button key={m.id} onClick={() => handleModeClick(m.id)} title={m.desc}
                       className="px-2.5 py-1 rounded-lg text-xs font-medium border transition-all"
                       style={{
                         backgroundColor: strip.mode === m.id ? "var(--color-primary)" : "transparent",
                         color: strip.mode === m.id ? "#fff" : "var(--color-text)",
                         borderColor: strip.mode === m.id ? "var(--color-primary)" : "var(--color-border)",
                         opacity: (!strip.enabled && m.id !== 'off') ? 0.4 : 1,
-                      }}
-                    >
+                      }}>
                       {m.label}
                     </button>
                   ))}
                 </div>
-                {/* Mode description */}
-                <p className="text-[11px] opacity-35 mt-1">
-                  {MODES.find(m => m.id === strip.mode)?.desc || ""}
-                </p>
+                <p className="text-[11px] opacity-35 mt-1">{MODES.find(m => m.id === strip.mode)?.desc || ""}</p>
               </div>
 
-              {/* Mode-specific controls */}
               {strip.mode === 'fixed' && (
                 <div>
                   <p className="text-xs opacity-40 mb-1.5">Color</p>
                   <div className="flex items-center gap-2">
-                    <input type="color" value={strip.fixedColor}
-                      onChange={e => setStrip({ fixedColor: e.target.value })}
-                      disabled={!strip.enabled}
-                      className="w-10 h-8 rounded cursor-pointer p-0.5"
-                      style={{ border: "none", background: "none" }} />
+                    <input type="color" value={strip.fixedColor} onChange={e => setStrip({ fixedColor: e.target.value })} disabled={!strip.enabled} className="w-10 h-8 rounded cursor-pointer p-0.5" style={{ border: "none", background: "none" }} />
                     <span className="font-mono text-xs opacity-40 flex-1">{strip.fixedColor.toUpperCase()}</span>
-                    <button
-                      disabled={!strip.enabled}
-                      onClick={() => sendLedCommand(selectedStripId, 'fixed', { rgb: hexToRgb(strip.fixedColor) })}
-                      className="px-3 py-1 text-xs rounded-lg text-white disabled:opacity-40"
-                      style={{ backgroundColor: "var(--color-primary)" }}>
-                      Aplicar
-                    </button>
+                    <button disabled={!strip.enabled} onClick={() => sendLedCommand(selectedStripId, 'fixed', { rgb: hexToRgb(strip.fixedColor) })} className="px-3 py-1 text-xs rounded-lg text-white disabled:opacity-40" style={{ backgroundColor: "var(--color-primary)" }}>Aplicar</button>
                   </div>
                 </div>
               )}
-
               {strip.mode === 'door_open' && (
                 <div className="space-y-2">
                   <p className="text-xs opacity-40 mb-1">Color apertura</p>
                   <div className="flex items-center gap-2">
-                    <input type="color" value={strip.fixedColor}
-                      onChange={e => setStrip({ fixedColor: e.target.value })}
-                      disabled={!strip.enabled}
-                      className="w-10 h-8 rounded cursor-pointer p-0.5"
-                      style={{ border: "none", background: "none" }} />
+                    <input type="color" value={strip.fixedColor} onChange={e => setStrip({ fixedColor: e.target.value })} disabled={!strip.enabled} className="w-10 h-8 rounded cursor-pointer p-0.5" style={{ border: "none", background: "none" }} />
                     <span className="font-mono text-xs opacity-40 flex-1">{strip.fixedColor.toUpperCase()}</span>
                   </div>
                   <p className="text-xs opacity-40">Solo encender al abrir puerta</p>
                 </div>
               )}
-
               {strip.mode === 'auto_temp' && (
                 <div>
                   <p className="text-xs opacity-40">Automático por temperatura</p>
                   <div className="mt-1.5 space-y-1">
-                    {[
-                      { label: "< 20°C", color: "#006eff" },
-                      { label: "20–27°C", color: "#00c878" },
-                      { label: "27–30°C", color: "#ffa000" },
-                      { label: ">= 30°C", color: "#ff3c3c" },
-                    ].map(b => (
+                    {[{ label: "< 20°C", color: "#006eff" }, { label: "20–27°C", color: "#00c878" }, { label: "27–30°C", color: "#ffa000" }, { label: ">= 30°C", color: "#ff3c3c" }].map(b => (
                       <div key={b.label} className="flex items-center gap-2">
                         <span style={{ width: 10, height: 10, borderRadius: "50%", backgroundColor: b.color, display: "inline-block", flexShrink: 0 }} />
                         <span className="text-xs opacity-50">{b.label}</span>
@@ -541,16 +592,11 @@ const CabinetManagement = ({ cabinets = [], sensors = [] }) => {
                   </div>
                 </div>
               )}
-
               {strip.mode === 'alert' && (
                 <div className="space-y-2">
                   <p className="text-xs opacity-40 mb-1">Color alerta</p>
                   <div className="flex items-center gap-2">
-                    <input type="color" value={strip.alertColor}
-                      onChange={e => setStrip({ alertColor: e.target.value })}
-                      disabled={!strip.enabled}
-                      className="w-10 h-8 rounded cursor-pointer p-0.5"
-                      style={{ border: "none", background: "none" }} />
+                    <input type="color" value={strip.alertColor} onChange={e => setStrip({ alertColor: e.target.value })} disabled={!strip.enabled} className="w-10 h-8 rounded cursor-pointer p-0.5" style={{ border: "none", background: "none" }} />
                     <span className="font-mono text-xs opacity-40 flex-1">{strip.alertColor.toUpperCase()}</span>
                   </div>
                   <p className="text-xs opacity-40">Solo encender en alertas</p>
@@ -579,7 +625,7 @@ const CabinetManagement = ({ cabinets = [], sensors = [] }) => {
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium truncate">{device.name}</p>
                       <p className="text-[11px] opacity-35 truncate">
-                        {placed ? `U${pos.u}` : "Sin ubicar"} · {device.desc}
+                        {placed ? `U${pos.u} · ${pos.face === 'back' ? 'Trasera' : 'Frente'}` : "Sin ubicar"} · {device.desc}
                       </p>
                     </div>
                     <button
@@ -603,49 +649,43 @@ const CabinetManagement = ({ cabinets = [], sensors = [] }) => {
           </div>
         </div>
 
-        {/* ---- COLUMNA DERECHA: Gabinete 3D ---- */}
+        {/* ---- COLUMNA DERECHA: Gabinete 3D (frontal + trasera) ---- */}
         <div className="lg:col-span-2 rounded-2xl border" style={{ backgroundColor: "var(--color-card)", borderColor: "var(--color-border)" }}>
-          <div className="px-5 py-3.5 border-b flex items-center justify-between" style={{ borderColor: "var(--color-border)" }}>
-            <div>
-              <h2 className="text-sm font-semibold tracking-wide uppercase opacity-70">Vista 3D</h2>
-              <p className="text-xs mt-0.5 opacity-35">
-                {rackView === 'front' ? 'Vista frontal del gabinete' : 'Vista trasera · Gestión de cables'}
-              </p>
-            </div>
-            <div className="flex gap-1">
-              {[{ id: 'front', label: 'Frontal' }, { id: 'back', label: 'Trasera' }].map(v => (
-                <button
-                  key={v.id}
-                  onClick={() => setRackView(v.id)}
-                  className="px-3 py-1.5 text-xs font-medium rounded-lg border transition-all"
-                  style={{
-                    backgroundColor: rackView === v.id ? "var(--color-primary)" : "transparent",
-                    color: rackView === v.id ? "#fff" : "var(--color-text)",
-                    borderColor: rackView === v.id ? "var(--color-primary)" : "var(--color-border)",
-                  }}
-                >
-                  {v.label}
-                </button>
-              ))}
-            </div>
+          <div className="px-5 py-3.5 border-b" style={{ borderColor: "var(--color-border)" }}>
+            <h2 className="text-sm font-semibold tracking-wide uppercase opacity-70">Vista del Gabinete</h2>
+            <p className="text-xs mt-0.5 opacity-35">Frontal y trasera simultáneas</p>
           </div>
-          <div className="p-5 flex justify-center overflow-x-auto">
-            {rackView === 'front' ? (
-              <Rack3D
-                uCount={U_COUNT}
-                strips={strips}
-                stripCount={stripCount}
-                selectedStripId={selectedStripId}
-                placedDevices={placedDevices}
-              />
-            ) : (
-              <Rack3DBack
-                uCount={U_COUNT}
-                strips={strips}
-                stripCount={stripCount}
-                selectedStripId={selectedStripId}
-              />
-            )}
+          <div className="p-5 flex gap-4 justify-center overflow-x-auto">
+            {(() => {
+              const front = getFaceStrips('front');
+              const back  = getFaceStrips('back');
+              return (
+                <>
+                  <div className="flex flex-col items-center gap-1.5">
+                    <span className="text-xs font-medium opacity-50 tracking-wide uppercase">Frontal</span>
+                    <Rack3D
+                      uCount={U_COUNT}
+                      leftStrip={front.leftStrip}
+                      rightStrip={front.rightStrip}
+                      leftSelected={front.leftId === selectedStripId}
+                      rightSelected={front.rightId === selectedStripId}
+                      placedDevices={placedDevices.filter(d => (d.placement.face || 'front') === 'front')}
+                    />
+                  </div>
+                  <div className="flex flex-col items-center gap-1.5">
+                    <span className="text-xs font-medium opacity-50 tracking-wide uppercase">Trasera</span>
+                    <Rack3DBack
+                      uCount={U_COUNT}
+                      leftStrip={back.leftStrip}
+                      rightStrip={back.rightStrip}
+                      leftSelected={back.leftId === selectedStripId}
+                      rightSelected={back.rightId === selectedStripId}
+                      placedDevices={placedDevices.filter(d => d.placement.face === 'back')}
+                    />
+                  </div>
+                </>
+              );
+            })()}
           </div>
         </div>
       </div>
@@ -706,71 +746,32 @@ const CabinetManagement = ({ cabinets = [], sensors = [] }) => {
 /* ============================================================
    RACK 3D (FRONTAL)
 ============================================================ */
-function Rack3D({ uCount = 42, strips = [], stripCount = 2, selectedStripId = 0, placedDevices = [] }) {
+function Rack3D({ uCount = 42, leftStrip = null, rightStrip = null, leftSelected = false, rightSelected = false, placedDevices = [] }) {
   const W = 230, H = 520, DEPTH = 65;
-  const LED_W   = 10;
-  const LED_W_M = 6; // middle strips narrower
-  const PANEL_L = LED_W + 3;
-  const PANEL_R = LED_W + 3;
+  const LED_W = 10;
+  const PANEL_L = leftStrip  ? LED_W + 3 : 8;
+  const PANEL_R = rightStrip ? LED_W + 3 : 8;
   const PANEL_W = W - PANEL_L - PANEL_R;
 
-  // Build strip layout based on stripCount
-  // Each entry: { id, style, isSelected }
-  const stripLayouts = (() => {
-    const DEFAULT_STRIP_LOCAL = { enabled: true, fixedColor: '#00aaff' };
-    const getStripStyle = (i) => {
-      const st = strips[i] || DEFAULT_STRIP_LOCAL;
-      const color = st.enabled ? st.fixedColor : "#2d3748";
-      const glow  = st.enabled ? `0 0 10px ${st.fixedColor}, 0 0 22px ${st.fixedColor}66` : "none";
-      const isSelected = selectedStripId === i;
-      return { color, glow, isSelected, enabled: st.enabled };
+  const makeStripStyle = (st, side, isSel) => {
+    if (!st) return null;
+    const color = st.enabled ? st.fixedColor : "#2d3748";
+    const glow  = st.enabled ? `0 0 10px ${st.fixedColor}, 0 0 22px ${st.fixedColor}66` : "none";
+    return {
+      position: "absolute", [side === 'left' ? 'left' : 'right']: 0,
+      top: 0, width: LED_W, height: "100%",
+      backgroundColor: color,
+      boxShadow: isSel ? `${glow}, inset 0 0 8px rgba(255,255,255,0.3)` : glow,
+      opacity: st.enabled ? 1 : 0.25,
+      outline: isSel ? "2px solid rgba(255,255,255,0.7)" : "none",
+      outlineOffset: "-1px",
+      transition: "opacity 0.25s, box-shadow 0.25s",
+      zIndex: 20,
     };
+  };
 
-    if (stripCount === 1) {
-      const s = getStripStyle(0);
-      return [{
-        id: 0,
-        style: {
-          position: "absolute",
-          left: W / 2 - LED_W / 2, top: 0, width: LED_W, height: "100%",
-          backgroundColor: s.color,
-          boxShadow: s.isSelected ? `${s.glow}, inset 0 0 8px rgba(255,255,255,0.3)` : s.glow,
-          opacity: s.enabled ? 1 : 0.25,
-          outline: s.isSelected ? "2px solid rgba(255,255,255,0.7)" : "none",
-          outlineOffset: "-1px",
-          transition: "opacity 0.25s, box-shadow 0.25s",
-          zIndex: 20,
-        },
-      }];
-    }
-
-    if (stripCount === 4) {
-      const layouts = [];
-      // Left
-      const s0 = getStripStyle(0);
-      layouts.push({ id: 0, style: { position: "absolute", left: 0, top: 0, width: LED_W, height: "100%", backgroundColor: s0.color, boxShadow: s0.isSelected ? `${s0.glow}, inset 0 0 8px rgba(255,255,255,0.3)` : s0.glow, opacity: s0.enabled ? 1 : 0.25, outline: s0.isSelected ? "2px solid rgba(255,255,255,0.7)" : "none", outlineOffset: "-1px", transition: "opacity 0.25s, box-shadow 0.25s", zIndex: 20 } });
-      // Right
-      const s1 = getStripStyle(1);
-      layouts.push({ id: 1, style: { position: "absolute", right: 0, top: 0, width: LED_W, height: "100%", backgroundColor: s1.color, boxShadow: s1.isSelected ? `${s1.glow}, inset 0 0 8px rgba(255,255,255,0.3)` : s1.glow, opacity: s1.enabled ? 1 : 0.25, outline: s1.isSelected ? "2px solid rgba(255,255,255,0.7)" : "none", outlineOffset: "-1px", transition: "opacity 0.25s, box-shadow 0.25s", zIndex: 20 } });
-      // Middle left
-      const s2 = getStripStyle(2);
-      const midL = Math.floor(W * 0.38);
-      layouts.push({ id: 2, style: { position: "absolute", left: midL, top: 0, width: LED_W_M, height: "100%", backgroundColor: s2.color, boxShadow: s2.isSelected ? `${s2.glow}, inset 0 0 8px rgba(255,255,255,0.3)` : s2.glow, opacity: s2.enabled ? 1 : 0.25, outline: s2.isSelected ? "2px solid rgba(255,255,255,0.7)" : "none", outlineOffset: "-1px", transition: "opacity 0.25s, box-shadow 0.25s", zIndex: 20 } });
-      // Middle right
-      const s3 = getStripStyle(3);
-      const midR = Math.floor(W * 0.38);
-      layouts.push({ id: 3, style: { position: "absolute", right: midR, top: 0, width: LED_W_M, height: "100%", backgroundColor: s3.color, boxShadow: s3.isSelected ? `${s3.glow}, inset 0 0 8px rgba(255,255,255,0.3)` : s3.glow, opacity: s3.enabled ? 1 : 0.25, outline: s3.isSelected ? "2px solid rgba(255,255,255,0.7)" : "none", outlineOffset: "-1px", transition: "opacity 0.25s, box-shadow 0.25s", zIndex: 20 } });
-      return layouts;
-    }
-
-    // Default: 2 strips (left + right)
-    const s0 = getStripStyle(0);
-    const s1 = getStripStyle(1);
-    return [
-      { id: 0, style: { position: "absolute", left: 0, top: 0, width: LED_W, height: "100%", backgroundColor: s0.color, boxShadow: s0.isSelected ? `${s0.glow}, inset 0 0 8px rgba(255,255,255,0.3)` : s0.glow, opacity: s0.enabled ? 1 : 0.25, outline: s0.isSelected ? "2px solid rgba(255,255,255,0.7)" : "none", outlineOffset: "-1px", transition: "opacity 0.25s, box-shadow 0.25s", zIndex: 20 } },
-      { id: 1, style: { position: "absolute", right: 0, top: 0, width: LED_W, height: "100%", backgroundColor: s1.color, boxShadow: s1.isSelected ? `${s1.glow}, inset 0 0 8px rgba(255,255,255,0.3)` : s1.glow, opacity: s1.enabled ? 1 : 0.25, outline: s1.isSelected ? "2px solid rgba(255,255,255,0.7)" : "none", outlineOffset: "-1px", transition: "opacity 0.25s, box-shadow 0.25s", zIndex: 20 } },
-    ];
-  })();
+  const leftStyle  = makeStripStyle(leftStrip,  'left',  leftSelected);
+  const rightStyle = makeStripStyle(rightStrip, 'right', rightSelected);
 
   return (
     <div style={{ perspective: "1100px", perspectiveOrigin: "50% 36%", paddingBottom: 24 }}>
@@ -853,10 +854,9 @@ function Rack3D({ uCount = 42, strips = [], stripCount = 2, selectedStripId = 0,
             })}
           </div>
 
-          {/* LED strips (purely visual, no onClick) */}
-          {stripLayouts.map(sl => (
-            <div key={sl.id} style={sl.style} />
-          ))}
+          {/* LED strips */}
+          {leftStyle  && <div style={leftStyle} />}
+          {rightStyle && <div style={rightStyle} />}
 
           {/* Tornillos decorativos (esquinas) */}
           {[[6, 6], [W - 10, 6], [6, H - 10], [W - 10, H - 10]].map(([cx, cy], i) => (
@@ -887,10 +887,6 @@ function Rack3D({ uCount = 42, strips = [], stripCount = 2, selectedStripId = 0,
           pointerEvents: "none",
         }} />
       </div>
-
-      <p style={{ textAlign: "center", marginTop: 36, fontSize: 11, opacity: 0.3, userSelect: "none" }}>
-        Vista frontal del gabinete
-      </p>
     </div>
   );
 }
@@ -898,47 +894,32 @@ function Rack3D({ uCount = 42, strips = [], stripCount = 2, selectedStripId = 0,
 /* ============================================================
    RACK 3D (TRASERA)
 ============================================================ */
-function Rack3DBack({ uCount = 42, strips = [], stripCount = 2, selectedStripId = 0 }) {
+function Rack3DBack({ uCount = 42, leftStrip = null, rightStrip = null, leftSelected = false, rightSelected = false, placedDevices = [] }) {
   const W = 230, H = 520, DEPTH = 65;
-  const LED_W   = 10;
-  const LED_W_M = 6;
+  const LED_W = 10;
+  const PANEL_L = leftStrip  ? LED_W + 3 : 8;
+  const PANEL_R = rightStrip ? LED_W + 3 : 8;
+  const PANEL_W = W - PANEL_L - PANEL_R;
 
-  const stripLayouts = (() => {
-    const DEFAULT_STRIP_LOCAL = { enabled: true, fixedColor: '#00aaff' };
-    const getStripStyle = (i) => {
-      const st = strips[i] || DEFAULT_STRIP_LOCAL;
-      const color = st.enabled ? st.fixedColor : "#2d3748";
-      const glow  = st.enabled ? `0 0 10px ${st.fixedColor}, 0 0 22px ${st.fixedColor}66` : "none";
-      const isSelected = selectedStripId === i;
-      return { color, glow, isSelected, enabled: st.enabled };
+  const makeStripStyle = (st, side, isSel) => {
+    if (!st) return null;
+    const color = st.enabled ? st.fixedColor : "#2d3748";
+    const glow  = st.enabled ? `0 0 10px ${st.fixedColor}, 0 0 22px ${st.fixedColor}66` : "none";
+    return {
+      position: "absolute", [side === 'left' ? 'left' : 'right']: 0,
+      top: 0, width: LED_W, height: "100%",
+      backgroundColor: color,
+      boxShadow: isSel ? `${glow}, inset 0 0 8px rgba(255,255,255,0.3)` : glow,
+      opacity: st.enabled ? 1 : 0.25,
+      outline: isSel ? "2px solid rgba(255,255,255,0.7)" : "none",
+      outlineOffset: "-1px",
+      transition: "opacity 0.25s, box-shadow 0.25s",
+      zIndex: 20,
     };
+  };
 
-    if (stripCount === 1) {
-      const s = getStripStyle(0);
-      return [{ id: 0, style: { position: "absolute", left: W / 2 - LED_W / 2, top: 0, width: LED_W, height: "100%", backgroundColor: s.color, boxShadow: s.isSelected ? `${s.glow}, inset 0 0 8px rgba(255,255,255,0.3)` : s.glow, opacity: s.enabled ? 1 : 0.25, outline: s.isSelected ? "2px solid rgba(255,255,255,0.7)" : "none", outlineOffset: "-1px", transition: "opacity 0.25s, box-shadow 0.25s", zIndex: 20 } }];
-    }
-    if (stripCount === 4) {
-      const s0 = getStripStyle(0);
-      const s1 = getStripStyle(1);
-      const s2 = getStripStyle(2);
-      const s3 = getStripStyle(3);
-      const midL = Math.floor(W * 0.38);
-      const midR = Math.floor(W * 0.38);
-      return [
-        { id: 0, style: { position: "absolute", left: 0, top: 0, width: LED_W, height: "100%", backgroundColor: s0.color, boxShadow: s0.isSelected ? `${s0.glow}, inset 0 0 8px rgba(255,255,255,0.3)` : s0.glow, opacity: s0.enabled ? 1 : 0.25, outline: s0.isSelected ? "2px solid rgba(255,255,255,0.7)" : "none", outlineOffset: "-1px", transition: "opacity 0.25s, box-shadow 0.25s", zIndex: 20 } },
-        { id: 1, style: { position: "absolute", right: 0, top: 0, width: LED_W, height: "100%", backgroundColor: s1.color, boxShadow: s1.isSelected ? `${s1.glow}, inset 0 0 8px rgba(255,255,255,0.3)` : s1.glow, opacity: s1.enabled ? 1 : 0.25, outline: s1.isSelected ? "2px solid rgba(255,255,255,0.7)" : "none", outlineOffset: "-1px", transition: "opacity 0.25s, box-shadow 0.25s", zIndex: 20 } },
-        { id: 2, style: { position: "absolute", left: midL, top: 0, width: LED_W_M, height: "100%", backgroundColor: s2.color, boxShadow: s2.isSelected ? `${s2.glow}, inset 0 0 8px rgba(255,255,255,0.3)` : s2.glow, opacity: s2.enabled ? 1 : 0.25, outline: s2.isSelected ? "2px solid rgba(255,255,255,0.7)" : "none", outlineOffset: "-1px", transition: "opacity 0.25s, box-shadow 0.25s", zIndex: 20 } },
-        { id: 3, style: { position: "absolute", right: midR, top: 0, width: LED_W_M, height: "100%", backgroundColor: s3.color, boxShadow: s3.isSelected ? `${s3.glow}, inset 0 0 8px rgba(255,255,255,0.3)` : s3.glow, opacity: s3.enabled ? 1 : 0.25, outline: s3.isSelected ? "2px solid rgba(255,255,255,0.7)" : "none", outlineOffset: "-1px", transition: "opacity 0.25s, box-shadow 0.25s", zIndex: 20 } },
-      ];
-    }
-    // Default 2
-    const s0 = getStripStyle(0);
-    const s1 = getStripStyle(1);
-    return [
-      { id: 0, style: { position: "absolute", left: 0, top: 0, width: LED_W, height: "100%", backgroundColor: s0.color, boxShadow: s0.isSelected ? `${s0.glow}, inset 0 0 8px rgba(255,255,255,0.3)` : s0.glow, opacity: s0.enabled ? 1 : 0.25, outline: s0.isSelected ? "2px solid rgba(255,255,255,0.7)" : "none", outlineOffset: "-1px", transition: "opacity 0.25s, box-shadow 0.25s", zIndex: 20 } },
-      { id: 1, style: { position: "absolute", right: 0, top: 0, width: LED_W, height: "100%", backgroundColor: s1.color, boxShadow: s1.isSelected ? `${s1.glow}, inset 0 0 8px rgba(255,255,255,0.3)` : s1.glow, opacity: s1.enabled ? 1 : 0.25, outline: s1.isSelected ? "2px solid rgba(255,255,255,0.7)" : "none", outlineOffset: "-1px", transition: "opacity 0.25s, box-shadow 0.25s", zIndex: 20 } },
-    ];
-  })();
+  const leftStyle  = makeStripStyle(leftStrip,  'left',  leftSelected);
+  const rightStyle = makeStripStyle(rightStrip, 'right', rightSelected);
 
   return (
     <div style={{ perspective: "1100px", perspectiveOrigin: "50% 36%", paddingBottom: 24 }}>
@@ -954,87 +935,66 @@ function Rack3DBack({ uCount = 42, strips = [], stripCount = 2, selectedStripId 
           boxShadow: "inset 0 0 40px rgba(0,0,0,0.7), inset 0 1px 0 rgba(255,255,255,0.04)",
         }}>
 
-          {/* Cable management pattern */}
+          {/* Panel de montaje trasero */}
           <div style={{
             position: "absolute",
-            left: LED_W + 3, right: LED_W + 3, top: 10, bottom: 10,
+            left: PANEL_L, right: PANEL_R, top: 10, bottom: 10,
             backgroundColor: "#0a1118",
             borderRadius: "3px",
             border: "1px solid #1a2535",
             overflow: "hidden",
           }}>
-            {/* Horizontal cable guides */}
+            {/* Guías de cable horizontales */}
             {Array.from({ length: 12 }).map((_, i) => (
-              <div key={i} style={{
-                position: "absolute",
-                top: `${(i + 0.5) * (100 / 12)}%`,
-                left: 6, right: 6,
-                height: 4,
-                borderRadius: 2,
-                backgroundColor: "#141e2d",
-                border: "1px solid #1e2d42",
-              }} />
+              <div key={i} style={{ position: "absolute", top: `${(i + 0.5) * (100 / 12)}%`, left: 6, right: 6, height: 4, borderRadius: 2, backgroundColor: "#141e2d", border: "1px solid #1e2d42" }} />
             ))}
-            {/* Vertical cable channels */}
+            {/* Canales verticales */}
             {[0.25, 0.5, 0.75].map((frac, i) => (
-              <div key={i} style={{
-                position: "absolute",
-                top: 6, bottom: 6,
-                left: `${frac * 100}%`,
-                width: 3,
-                backgroundColor: "#141e2d",
-                border: "1px solid #1e2d42",
-                borderRadius: 2,
-              }} />
+              <div key={i} style={{ position: "absolute", top: 6, bottom: 6, left: `${frac * 100}%`, width: 3, backgroundColor: "#141e2d", border: "1px solid #1e2d42", borderRadius: 2 }} />
             ))}
-            {/* Label */}
-            <div style={{
-              position: "absolute", bottom: 8, left: 0, right: 0,
-              textAlign: "center", fontSize: 7, color: "#374151", userSelect: "none",
-              letterSpacing: 1,
-            }}>
+            <div style={{ position: "absolute", bottom: 8, left: 0, right: 0, textAlign: "center", fontSize: 7, color: "#374151", userSelect: "none", letterSpacing: 1 }}>
               CABLE MANAGEMENT
             </div>
+
+            {/* Equipos y sensores colocados en trasera */}
+            {placedDevices.map(dev => {
+              const color   = getColor(dev.type);
+              const panelH  = H - 20;
+              const uHpx    = panelH / uCount;
+              const isRack  = isRackMount(dev.type);
+              if (isRack) {
+                const top    = ((dev.placement.u - 1) / uCount) * panelH + 1;
+                const height = Math.max(((dev.uHeight || 1) / uCount) * panelH - 2, 7);
+                return (
+                  <div key={dev.id} style={{ position: "absolute", top, left: 2, right: 2, height, backgroundColor: color, borderRadius: 3, opacity: 0.88, display: "flex", alignItems: "center", paddingLeft: 5, paddingRight: 5, overflow: "hidden", boxShadow: `0 0 8px ${color}50` }}>
+                    <span style={{ fontSize: 7.5, color: "#fff", fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", letterSpacing: 0.3 }}>{dev.name}</span>
+                  </div>
+                );
+              }
+              const yDot = ((dev.placement.u - 1) / uCount) * panelH + uHpx / 2;
+              const xDot = dev.placement.x * (PANEL_W - 10) + 2;
+              return (
+                <div key={dev.id} title={`${dev.name} · U${dev.placement.u}`} style={{ position: "absolute", top: yDot - 5, left: xDot, width: 10, height: 10, borderRadius: "50%", backgroundColor: color, boxShadow: `0 0 6px ${color}, 0 0 12px ${color}60`, zIndex: 5 }} />
+              );
+            })}
           </div>
 
-          {/* LED strips (purely visual) */}
-          {stripLayouts.map(sl => (
-            <div key={sl.id} style={sl.style} />
-          ))}
+          {/* LED strips */}
+          {leftStyle  && <div style={leftStyle} />}
+          {rightStyle && <div style={rightStyle} />}
 
           {/* Tornillos decorativos */}
           {[[6, 6], [W - 10, 6], [6, H - 10], [W - 10, H - 10]].map(([cx, cy], i) => (
-            <div key={i} style={{
-              position: "absolute", left: cx - 3, top: cy - 3, width: 6, height: 6,
-              borderRadius: "50%", backgroundColor: "#1f2d3d", border: "1px solid #374151",
-            }} />
+            <div key={i} style={{ position: "absolute", left: cx - 3, top: cy - 3, width: 6, height: 6, borderRadius: "50%", backgroundColor: "#1f2d3d", border: "1px solid #374151" }} />
           ))}
         </div>
 
         {/* === CARA LATERAL DERECHA === */}
-        <div style={{
-          position: "absolute", width: DEPTH, height: H, left: W, top: 0,
-          transform: `rotateY(90deg) translateZ(${DEPTH / 2}px) translateX(${-DEPTH / 2}px)`,
-          transformOrigin: "left center",
-          background: "linear-gradient(to right, #0d1520, #0a1018)",
-          border: "1px solid #1a2535",
-          pointerEvents: "none",
-        }} />
+        <div style={{ position: "absolute", width: DEPTH, height: H, left: W, top: 0, transform: `rotateY(90deg) translateZ(${DEPTH / 2}px) translateX(${-DEPTH / 2}px)`, transformOrigin: "left center", background: "linear-gradient(to right, #0d1520, #0a1018)", border: "1px solid #1a2535", pointerEvents: "none" }} />
 
         {/* === CARA SUPERIOR === */}
-        <div style={{
-          position: "absolute", width: W, height: DEPTH, top: -DEPTH,
-          transform: `rotateX(90deg) translateZ(${-DEPTH / 2}px) translateY(${-DEPTH / 2}px)`,
-          transformOrigin: "bottom center",
-          background: "linear-gradient(to bottom, #0a0f18, #0d1520)",
-          border: "1px solid #1a2535",
-          pointerEvents: "none",
-        }} />
+        <div style={{ position: "absolute", width: W, height: DEPTH, top: -DEPTH, transform: `rotateX(90deg) translateZ(${-DEPTH / 2}px) translateY(${-DEPTH / 2}px)`, transformOrigin: "bottom center", background: "linear-gradient(to bottom, #0a0f18, #0d1520)", border: "1px solid #1a2535", pointerEvents: "none" }} />
       </div>
-
-      <p style={{ textAlign: "center", marginTop: 36, fontSize: 11, opacity: 0.3, userSelect: "none" }}>
-        Vista trasera · Gestión de cables
-      </p>
     </div>
   );
 }
@@ -1043,7 +1003,8 @@ function Rack3DBack({ uCount = 42, strips = [], stripCount = 2, selectedStripId 
    MODAL DE POSICIONAMIENTO (2D interactivo)
 ============================================================ */
 function PlacementModal({ device, currentPlacement, allPlacements, allDevices, onSave, onRemove, onClose }) {
-  const [tempPos, setTempPos] = useState(currentPlacement || null);
+  const [tempPos, setTempPos] = useState(currentPlacement ? { u: currentPlacement.u, x: currentPlacement.x } : null);
+  const [face, setFace] = useState(currentPlacement?.face || 'front');
 
   const handleSvgClick = (e) => {
     const rect = e.currentTarget.getBoundingClientRect();
@@ -1054,8 +1015,9 @@ function PlacementModal({ device, currentPlacement, allPlacements, allDevices, o
     setTempPos({ u, x });
   };
 
+  // Mostrar otros equipos solo de la misma cara
   const others = allDevices
-    .filter(d => d.id !== device.id && allPlacements[d.id])
+    .filter(d => d.id !== device.id && allPlacements[d.id] && (allPlacements[d.id].face || 'front') === face)
     .map(d => ({ ...d, placement: allPlacements[d.id] }));
 
   const devColor = getColor(device.type);
@@ -1074,10 +1036,26 @@ function PlacementModal({ device, currentPlacement, allPlacements, allDevices, o
             </div>
             <div>
               <p className="text-sm font-semibold">{device.name}</p>
-              <p className="text-xs opacity-35">Haz clic en el rack para seleccionar la posición</p>
+              <p className="text-xs opacity-35">Selecciona la cara y haz clic en el rack</p>
             </div>
           </div>
-          <button onClick={onClose} className="opacity-40 hover:opacity-100 transition"><FiX size={16} /></button>
+          <div className="flex items-center gap-3">
+            {/* Selector Frente / Trasera */}
+            <div className="flex gap-1">
+              {[{ id: 'front', label: 'Frente' }, { id: 'back', label: 'Trasera' }].map(f => (
+                <button key={f.id} onClick={() => setFace(f.id)}
+                  className="px-3 py-1 text-xs font-medium rounded-lg border transition-all"
+                  style={{
+                    backgroundColor: face === f.id ? "var(--color-primary)" : "transparent",
+                    color: face === f.id ? "#fff" : "var(--color-text)",
+                    borderColor: face === f.id ? "var(--color-primary)" : "var(--color-border)",
+                  }}>
+                  {f.label}
+                </button>
+              ))}
+            </div>
+            <button onClick={onClose} className="opacity-40 hover:opacity-100 transition"><FiX size={16} /></button>
+          </div>
         </div>
 
         {/* Cuerpo modal */}
@@ -1166,6 +1144,7 @@ function PlacementModal({ device, currentPlacement, allPlacements, allDevices, o
                 <div className="p-3 rounded-xl space-y-1.5"
                   style={{ backgroundColor: `${devColor}12`, border: `1px solid ${devColor}30` }}>
                   <p className="text-xs font-semibold mb-2" style={{ color: devColor }}>Posición seleccionada</p>
+                  <p className="text-sm"><span className="opacity-40">Cara: </span><strong>{face === 'back' ? 'Trasera' : 'Frontal'}</strong></p>
                   <p className="text-sm"><span className="opacity-40">Unidad: </span><strong>U{tempPos.u}</strong></p>
                   <p className="text-sm"><span className="opacity-40">Posición: </span><strong>{(tempPos.x * 100).toFixed(0)}% del ancho</strong></p>
                 </div>
@@ -1188,7 +1167,7 @@ function PlacementModal({ device, currentPlacement, allPlacements, allDevices, o
               <button onClick={onClose} className="flex-1 py-2.5 text-sm rounded-xl border hover:opacity-80 transition" style={{ borderColor: "var(--color-border)" }}>
                 Cancelar
               </button>
-              <button onClick={() => tempPos && onSave(tempPos)} disabled={!tempPos}
+              <button onClick={() => tempPos && onSave({ ...tempPos, face })} disabled={!tempPos}
                 className="flex-1 py-2.5 text-sm rounded-xl font-semibold text-white disabled:opacity-35 hover:opacity-90 transition"
                 style={{ backgroundColor: "var(--color-primary)" }}>
                 Listo
