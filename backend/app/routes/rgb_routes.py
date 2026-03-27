@@ -9,7 +9,15 @@ rgb_bp = Blueprint("rgb", __name__)
 @rgb_bp.route("/led_cmd", methods=["POST", "OPTIONS"])
 def led_cmd():
     if request.method == "OPTIONS":
-        return "", 200
+        from flask import make_response
+        resp = make_response("", 200)
+        origin = request.headers.get("Origin", "*")
+        resp.headers["Access-Control-Allow-Origin"] = origin
+        resp.headers["Access-Control-Allow-Methods"] = "POST, OPTIONS"
+        resp.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, X-Requested-With, Cache-Control"
+        resp.headers["Access-Control-Max-Age"] = "600"
+        resp.headers["Vary"] = "Origin"
+        return resp
     data = request.get_json(silent=True) or {}
 
     mode        = data.get("mode", "off")

@@ -744,147 +744,201 @@ const CabinetManagement = ({ cabinets = [], sensors = [] }) => {
 };
 
 /* ============================================================
+   HELPERS COMPARTIDOS PARA RACKS
+============================================================ */
+function RackStrip({ strip, side, selected }) {
+  if (!strip) return null;
+  const c    = strip.enabled ? strip.fixedColor : "#2a3040";
+  const glow = strip.enabled
+    ? `0 0 6px ${strip.fixedColor}cc, 0 0 18px ${strip.fixedColor}55`
+    : "none";
+  return (
+    <div style={{
+      position: "absolute",
+      [side === "left" ? "right" : "left"]: 0,
+      top: "4%", bottom: "4%", width: selected ? 6 : 4,
+      background: `linear-gradient(to bottom, ${c}00 0%, ${c} 8%, ${c} 92%, ${c}00 100%)`,
+      boxShadow: selected ? `${glow}, 0 0 0 1px rgba(255,255,255,0.35)` : glow,
+      opacity: strip.enabled ? 1 : 0.25,
+      transition: "all 0.3s ease",
+      borderRadius: 3,
+    }} />
+  );
+}
+
+function RackDevice({ dev, uCount, mountH, panelW, isBack = false }) {
+  const color  = getColor(dev.type);
+  const isRack = isRackMount(dev.type);
+  const U_H    = mountH / uCount;
+
+  if (isRack) {
+    const top = ((dev.placement.u - 1) / uCount) * mountH;
+    const h   = Math.max(((dev.uHeight || 1) / uCount) * mountH - 1, 7);
+    return (
+      <div style={{
+        position: "absolute", top, left: 0, right: 0, height: h,
+        background: `linear-gradient(90deg, ${color} 0px, ${color}cc 3px, ${color}15 100%)`,
+        borderTop: `1px solid ${color}70`,
+        borderBottom: `1px solid ${color}25`,
+        display: "flex", alignItems: "center",
+        paddingLeft: 6, paddingRight: 5, overflow: "hidden",
+      }}>
+        <span style={{ fontSize: 6.5, color: "#cdd8e8", fontWeight: 700, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", letterSpacing: 0.4 }}>
+          {dev.name}
+        </span>
+        {!isBack && (
+          <div style={{ display: "flex", gap: 2.5, flexShrink: 0 }}>
+            <div style={{ width: 4, height: 4, borderRadius: "50%", background: "#22c55e", boxShadow: "0 0 5px #22c55e99" }} />
+            {dev.type === "appliance" && <div style={{ width: 4, height: 4, borderRadius: "50%", background: "#60a5fa", boxShadow: "0 0 5px #60a5fa99" }} />}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  const yDot = ((dev.placement.u - 1) / uCount) * mountH + U_H / 2;
+  const xDot = dev.placement.x * Math.max(panelW - 14, 20) + 4;
+  return (
+    <div title={`${dev.name} · U${dev.placement.u}`} style={{
+      position: "absolute", top: yDot - 5, left: xDot,
+      width: 10, height: 10, borderRadius: "50%",
+      background: color,
+      boxShadow: `0 0 6px ${color}ee, 0 0 14px ${color}66`,
+      zIndex: 5,
+    }} />
+  );
+}
+
+function RackRail({ side, uCount, mountTop, uH, strip, selected }) {
+  return (
+    <div style={{
+      position: "absolute",
+      [side]: 0, top: 0, width: 22, height: "100%",
+      background: side === "left"
+        ? "linear-gradient(90deg, #1a2438 0%, #1f2d44 75%, #1b2840 100%)"
+        : "linear-gradient(270deg, #1a2438 0%, #1f2d44 75%, #1b2840 100%)",
+      [side === "left" ? "borderRight" : "borderLeft"]: "1px solid #263348",
+      overflow: "hidden",
+    }}>
+      {Array.from({ length: uCount }).map((_, i) => (
+        <div key={i} style={{
+          position: "absolute",
+          left: "50%", transform: "translateX(-50%)",
+          top: mountTop + i * uH + uH * 0.28,
+          width: 8, height: Math.max(uH * 0.44, 3),
+          borderRadius: 2,
+          background: "#0b1421",
+          border: "1px solid #162030",
+          boxShadow: "inset 0 1px 2px rgba(0,0,0,0.7)",
+        }} />
+      ))}
+      <RackStrip strip={strip} side={side} selected={selected} />
+    </div>
+  );
+}
+
+/* ============================================================
    RACK 3D (FRONTAL)
 ============================================================ */
 function Rack3D({ uCount = 42, leftStrip = null, rightStrip = null, leftSelected = false, rightSelected = false, placedDevices = [] }) {
-  const W = 230, H = 520, DEPTH = 65;
-  const LED_W = 10;
-  const PANEL_L = leftStrip  ? LED_W + 3 : 8;
-  const PANEL_R = rightStrip ? LED_W + 3 : 8;
-  const PANEL_W = W - PANEL_L - PANEL_R;
-
-  const makeStripStyle = (st, side, isSel) => {
-    if (!st) return null;
-    const color = st.enabled ? st.fixedColor : "#2d3748";
-    const glow  = st.enabled ? `0 0 10px ${st.fixedColor}, 0 0 22px ${st.fixedColor}66` : "none";
-    return {
-      position: "absolute", [side === 'left' ? 'left' : 'right']: 0,
-      top: 0, width: LED_W, height: "100%",
-      backgroundColor: color,
-      boxShadow: isSel ? `${glow}, inset 0 0 8px rgba(255,255,255,0.3)` : glow,
-      opacity: st.enabled ? 1 : 0.25,
-      outline: isSel ? "2px solid rgba(255,255,255,0.7)" : "none",
-      outlineOffset: "-1px",
-      transition: "opacity 0.25s, box-shadow 0.25s",
-      zIndex: 20,
-    };
-  };
-
-  const leftStyle  = makeStripStyle(leftStrip,  'left',  leftSelected);
-  const rightStyle = makeStripStyle(rightStrip, 'right', rightSelected);
+  const W = 230, H = 520, DEPTH = 68;
+  const RAIL = 22;
+  const MNT_T = 14, MNT_B = 14;
+  const MNT_H = H - MNT_T - MNT_B;
+  const MNT_W = W - RAIL * 2;
+  const U_H   = MNT_H / uCount;
 
   return (
-    <div style={{ perspective: "1100px", perspectiveOrigin: "50% 36%", paddingBottom: 24 }}>
-      <div style={{ width: W, height: H, position: "relative", transformStyle: "preserve-3d", transform: "rotateX(10deg) rotateY(-22deg)" }}>
+    <div style={{ perspective: "1100px", perspectiveOrigin: "50% 38%" }}>
+      <div style={{ width: W, height: H, position: "relative", transformStyle: "preserve-3d", transform: "rotateX(8deg) rotateY(-20deg)" }}>
 
-        {/* === CARA FRONTAL === */}
+        {/* CARA FRONTAL */}
         <div style={{
-          position: "absolute", width: W, height: H,
-          backgroundColor: "#141c2b",
-          border: "2.5px solid #2d3a4f",
-          borderRadius: "5px",
-          overflow: "hidden",
-          boxShadow: "inset 0 0 40px rgba(0,0,0,0.7), inset 0 1px 0 rgba(255,255,255,0.05)",
+          position: "absolute", inset: 0,
+          background: "linear-gradient(180deg, #1b2338 0%, #141b2c 55%, #0f1420 100%)",
+          border: "2px solid #26334e",
+          borderRadius: 5, overflow: "hidden",
+          boxShadow: "inset 0 0 55px rgba(0,0,0,0.55), inset 0 2px 0 rgba(255,255,255,0.05)",
         }}>
 
-          {/* Panel montaje (área central) */}
+          {/* Rails con tiras LED */}
+          <RackRail side="left"  uCount={uCount} mountTop={MNT_T} uH={U_H} strip={leftStrip}  selected={leftSelected}  />
+          <RackRail side="right" uCount={uCount} mountTop={MNT_T} uH={U_H} strip={rightStrip} selected={rightSelected} />
+
+          {/* Panel de montaje */}
           <div style={{
             position: "absolute",
-            left: PANEL_L, right: PANEL_R, top: 10, bottom: 10,
-            backgroundColor: "#0d1520",
-            borderRadius: "3px",
-            border: "1px solid #1a2535",
+            left: RAIL, right: RAIL, top: MNT_T, bottom: MNT_B,
+            background: "#08101a",
+            border: "1px solid #162030",
+            borderRadius: 2, overflow: "hidden",
           }}>
-            {/* Grid U */}
-            {Array.from({ length: Math.floor(uCount / 6) }).map((_, i) => {
-              const uNum = (i + 1) * 6;
-              const y = ((uNum) / uCount) * (H - 20);
-              return (
-                <div key={uNum} style={{ position: "absolute", top: y, left: 0, right: 0 }}>
-                  <div style={{ height: 1, backgroundColor: "#1e2d42", opacity: 0.9 }} />
-                  <span style={{ position: "absolute", right: 3, top: -7, fontSize: 6.5, color: "#374151", userSelect: "none" }}>U{uNum}</span>
-                </div>
-              );
-            })}
-
-            {/* Equipos colocados */}
-            {placedDevices.map(dev => {
-              const color = getColor(dev.type);
-              const panelH = H - 20;
-              const uHpx  = panelH / uCount;
-              const isRack = isRackMount(dev.type);
-
-              if (isRack) {
-                const top    = ((dev.placement.u - 1) / uCount) * panelH + 1;
-                const height = Math.max(((dev.uHeight || 1) / uCount) * panelH - 2, 7);
-                return (
-                  <div key={dev.id} style={{
-                    position: "absolute", top, left: 2, right: 2, height,
-                    backgroundColor: color, borderRadius: 3, opacity: 0.88,
-                    display: "flex", alignItems: "center", paddingLeft: 5, paddingRight: 5,
-                    overflow: "hidden", boxShadow: `0 0 8px ${color}50`,
-                  }}>
-                    <span style={{ fontSize: 7.5, color: "#fff", fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", letterSpacing: 0.3 }}>
-                      {dev.name}
-                    </span>
-                    {dev.type === "appliance" && (
-                      <div style={{ display: "flex", gap: 3, marginLeft: "auto", paddingRight: 2 }}>
-                        <div style={{ width: 4, height: 4, borderRadius: "50%", backgroundColor: "#10b981", boxShadow: "0 0 4px #10b981" }} />
-                        <div style={{ width: 4, height: 4, borderRadius: "50%", backgroundColor: "#3b82f6", boxShadow: "0 0 4px #3b82f6" }} />
-                      </div>
-                    )}
-                  </div>
-                );
-              }
-
-              // Sensor: dot posicionado
-              const yDot = ((dev.placement.u - 1) / uCount) * panelH + uHpx / 2;
-              const xDot = dev.placement.x * (PANEL_W - 10) + 2;
-              return (
-                <div key={dev.id} title={`${dev.name} · U${dev.placement.u}`} style={{
-                  position: "absolute",
-                  top: yDot - 5, left: xDot,
-                  width: 10, height: 10,
-                  borderRadius: "50%",
-                  backgroundColor: color,
-                  boxShadow: `0 0 6px ${color}, 0 0 12px ${color}60`,
-                  zIndex: 5,
-                }} />
-              );
-            })}
+            {/* Líneas de U slots */}
+            {Array.from({ length: uCount }).map((_, i) => (
+              <div key={i} style={{
+                position: "absolute", top: i * U_H, left: 0, right: 0, height: U_H,
+                borderBottom: `1px solid ${(i + 1) % 6 === 0 ? "#1c2d42" : "#0c1724"}`,
+                boxSizing: "border-box",
+              }}>
+                {(i + 1) % 6 === 0 && (
+                  <span style={{ position: "absolute", right: 3, bottom: 1, fontSize: 5.5, color: "#243348", userSelect: "none", fontFamily: "monospace" }}>
+                    U{i + 1}
+                  </span>
+                )}
+              </div>
+            ))}
+            {/* Equipos y sensores */}
+            {placedDevices.map(dev => (
+              <RackDevice key={dev.id} dev={dev} uCount={uCount} mountH={MNT_H} panelW={MNT_W} />
+            ))}
           </div>
 
-          {/* LED strips */}
-          {leftStyle  && <div style={leftStyle} />}
-          {rightStyle && <div style={rightStyle} />}
-
-          {/* Tornillos decorativos (esquinas) */}
-          {[[6, 6], [W - 10, 6], [6, H - 10], [W - 10, H - 10]].map(([cx, cy], i) => (
+          {/* Tornillos en esquinas */}
+          {[[5,5],[W-9,5],[5,H-9],[W-9,H-9]].map(([cx,cy],i) => (
             <div key={i} style={{
-              position: "absolute", left: cx - 3, top: cy - 3, width: 6, height: 6,
-              borderRadius: "50%", backgroundColor: "#1f2d3d", border: "1px solid #374151",
+              position: "absolute", left: cx-4, top: cy-4, width: 8, height: 8,
+              borderRadius: "50%",
+              background: "radial-gradient(circle at 35% 35%, #3a4e64 0%, #182538 70%)",
+              border: "1px solid #263348",
+            }}>
+              <div style={{ position: "absolute", left: "50%", top: 1, bottom: 1, width: 1, transform: "translateX(-50%)", background: "#0b1521", borderRadius: 1 }} />
+            </div>
+          ))}
+
+          {/* Etiqueta inferior */}
+          <div style={{
+            position: "absolute", bottom: 3, left: RAIL, right: RAIL,
+            textAlign: "center", fontSize: 5.5, color: "#1e2d40",
+            userSelect: "none", letterSpacing: 2.5, fontWeight: 700, fontFamily: "monospace",
+          }}>
+            {uCount}U RACK · FRONT
+          </div>
+        </div>
+
+        {/* Cara lateral derecha */}
+        <div style={{
+          position: "absolute", width: DEPTH, height: H, left: W, top: 0,
+          transform: `rotateY(90deg) translateZ(${DEPTH/2}px) translateX(${-DEPTH/2}px)`,
+          transformOrigin: "left center",
+          background: "linear-gradient(to right, #0d1825 0%, #111e30 45%, #091016 100%)",
+          border: "1px solid #182030", pointerEvents: "none", overflow: "hidden",
+        }}>
+          {Array.from({ length: 7 }).map((_, i) => (
+            <div key={i} style={{
+              position: "absolute", top: 16 + i * (H - 32) / 7,
+              left: 6, right: 6, height: 3,
+              background: "#070e18", borderRadius: 1, border: "1px solid #121c28",
             }} />
           ))}
         </div>
 
-        {/* === CARA LATERAL DERECHA === */}
-        <div style={{
-          position: "absolute", width: DEPTH, height: H, left: W, top: 0,
-          transform: `rotateY(90deg) translateZ(${DEPTH / 2}px) translateX(${-DEPTH / 2}px)`,
-          transformOrigin: "left center",
-          background: "linear-gradient(to right, #0d1520, #0a1018)",
-          border: "1px solid #1a2535",
-          pointerEvents: "none",
-        }} />
-
-        {/* === CARA SUPERIOR === */}
+        {/* Cara superior */}
         <div style={{
           position: "absolute", width: W, height: DEPTH, top: -DEPTH,
-          transform: `rotateX(90deg) translateZ(${-DEPTH / 2}px) translateY(${-DEPTH / 2}px)`,
+          transform: `rotateX(90deg) translateZ(${-DEPTH/2}px) translateY(${-DEPTH/2}px)`,
           transformOrigin: "bottom center",
-          background: "linear-gradient(to bottom, #0a0f18, #0d1520)",
-          border: "1px solid #1a2535",
-          pointerEvents: "none",
+          background: "linear-gradient(to bottom, #070c16 0%, #0e1826 100%)",
+          border: "1px solid #182030", pointerEvents: "none",
         }} />
       </div>
     </div>
@@ -895,105 +949,120 @@ function Rack3D({ uCount = 42, leftStrip = null, rightStrip = null, leftSelected
    RACK 3D (TRASERA)
 ============================================================ */
 function Rack3DBack({ uCount = 42, leftStrip = null, rightStrip = null, leftSelected = false, rightSelected = false, placedDevices = [] }) {
-  const W = 230, H = 520, DEPTH = 65;
-  const LED_W = 10;
-  const PANEL_L = leftStrip  ? LED_W + 3 : 8;
-  const PANEL_R = rightStrip ? LED_W + 3 : 8;
-  const PANEL_W = W - PANEL_L - PANEL_R;
-
-  const makeStripStyle = (st, side, isSel) => {
-    if (!st) return null;
-    const color = st.enabled ? st.fixedColor : "#2d3748";
-    const glow  = st.enabled ? `0 0 10px ${st.fixedColor}, 0 0 22px ${st.fixedColor}66` : "none";
-    return {
-      position: "absolute", [side === 'left' ? 'left' : 'right']: 0,
-      top: 0, width: LED_W, height: "100%",
-      backgroundColor: color,
-      boxShadow: isSel ? `${glow}, inset 0 0 8px rgba(255,255,255,0.3)` : glow,
-      opacity: st.enabled ? 1 : 0.25,
-      outline: isSel ? "2px solid rgba(255,255,255,0.7)" : "none",
-      outlineOffset: "-1px",
-      transition: "opacity 0.25s, box-shadow 0.25s",
-      zIndex: 20,
-    };
-  };
-
-  const leftStyle  = makeStripStyle(leftStrip,  'left',  leftSelected);
-  const rightStyle = makeStripStyle(rightStrip, 'right', rightSelected);
+  const W = 230, H = 520, DEPTH = 68;
+  const RAIL = 22;
+  const MNT_T = 14, MNT_B = 14;
+  const MNT_H = H - MNT_T - MNT_B;
+  const MNT_W = W - RAIL * 2;
+  const U_H   = MNT_H / uCount;
 
   return (
-    <div style={{ perspective: "1100px", perspectiveOrigin: "50% 36%", paddingBottom: 24 }}>
-      <div style={{ width: W, height: H, position: "relative", transformStyle: "preserve-3d", transform: "rotateX(10deg) rotateY(158deg)" }}>
+    <div style={{ perspective: "1100px", perspectiveOrigin: "50% 38%" }}>
+      <div style={{ width: W, height: H, position: "relative", transformStyle: "preserve-3d", transform: "rotateX(8deg) rotateY(160deg)" }}>
 
-        {/* === PANEL TRASERO === */}
+        {/* CARA TRASERA */}
         <div style={{
-          position: "absolute", width: W, height: H,
-          backgroundColor: "#101824",
-          border: "2.5px solid #2d3a4f",
-          borderRadius: "5px",
-          overflow: "hidden",
-          boxShadow: "inset 0 0 40px rgba(0,0,0,0.7), inset 0 1px 0 rgba(255,255,255,0.04)",
+          position: "absolute", inset: 0,
+          background: "linear-gradient(180deg, #141c2e 0%, #0f1520 55%, #0b1018 100%)",
+          border: "2px solid #20303f",
+          borderRadius: 5, overflow: "hidden",
+          boxShadow: "inset 0 0 55px rgba(0,0,0,0.65), inset 0 1px 0 rgba(255,255,255,0.04)",
         }}>
 
-          {/* Panel de montaje trasero */}
+          {/* Rails con tiras LED */}
+          <RackRail side="left"  uCount={uCount} mountTop={MNT_T} uH={U_H} strip={leftStrip}  selected={leftSelected}  />
+          <RackRail side="right" uCount={uCount} mountTop={MNT_T} uH={U_H} strip={rightStrip} selected={rightSelected} />
+
+          {/* Panel trasero: gestión de cables + equipos */}
           <div style={{
             position: "absolute",
-            left: PANEL_L, right: PANEL_R, top: 10, bottom: 10,
-            backgroundColor: "#0a1118",
-            borderRadius: "3px",
-            border: "1px solid #1a2535",
-            overflow: "hidden",
+            left: RAIL, right: RAIL, top: MNT_T, bottom: MNT_B,
+            background: "#060d16",
+            border: "1px solid #141e2c",
+            borderRadius: 2, overflow: "hidden",
           }}>
             {/* Guías de cable horizontales */}
-            {Array.from({ length: 12 }).map((_, i) => (
-              <div key={i} style={{ position: "absolute", top: `${(i + 0.5) * (100 / 12)}%`, left: 6, right: 6, height: 4, borderRadius: 2, backgroundColor: "#141e2d", border: "1px solid #1e2d42" }} />
+            {Array.from({ length: 10 }).map((_, i) => (
+              <div key={i} style={{
+                position: "absolute",
+                top: `${6 + i * 88 / 10}%`,
+                left: 8, right: 8, height: 5,
+                background: "linear-gradient(90deg, #0c1520, #111e2e, #0c1520)",
+                borderRadius: 3, border: "1px solid #162030",
+                boxShadow: "0 1px 3px rgba(0,0,0,0.7)",
+              }} />
             ))}
             {/* Canales verticales */}
-            {[0.25, 0.5, 0.75].map((frac, i) => (
-              <div key={i} style={{ position: "absolute", top: 6, bottom: 6, left: `${frac * 100}%`, width: 3, backgroundColor: "#141e2d", border: "1px solid #1e2d42", borderRadius: 2 }} />
+            {[0.24, 0.5, 0.76].map((f, i) => (
+              <div key={i} style={{
+                position: "absolute", top: 8, bottom: 8,
+                left: `${f * 100}%`, width: 4,
+                background: "#0a1420", border: "1px solid #162030", borderRadius: 2,
+              }} />
             ))}
-            <div style={{ position: "absolute", bottom: 8, left: 0, right: 0, textAlign: "center", fontSize: 7, color: "#374151", userSelect: "none", letterSpacing: 1 }}>
+
+            {/* Equipos en cara trasera */}
+            {placedDevices.map(dev => (
+              <RackDevice key={dev.id} dev={dev} uCount={uCount} mountH={MNT_H} panelW={MNT_W} isBack />
+            ))}
+
+            {/* Etiqueta cable management */}
+            <div style={{
+              position: "absolute", bottom: 8, left: 0, right: 0,
+              textAlign: "center", fontSize: 5.5, color: "#182030",
+              userSelect: "none", letterSpacing: 2.5, fontWeight: 700, fontFamily: "monospace",
+            }}>
               CABLE MANAGEMENT
             </div>
-
-            {/* Equipos y sensores colocados en trasera */}
-            {placedDevices.map(dev => {
-              const color   = getColor(dev.type);
-              const panelH  = H - 20;
-              const uHpx    = panelH / uCount;
-              const isRack  = isRackMount(dev.type);
-              if (isRack) {
-                const top    = ((dev.placement.u - 1) / uCount) * panelH + 1;
-                const height = Math.max(((dev.uHeight || 1) / uCount) * panelH - 2, 7);
-                return (
-                  <div key={dev.id} style={{ position: "absolute", top, left: 2, right: 2, height, backgroundColor: color, borderRadius: 3, opacity: 0.88, display: "flex", alignItems: "center", paddingLeft: 5, paddingRight: 5, overflow: "hidden", boxShadow: `0 0 8px ${color}50` }}>
-                    <span style={{ fontSize: 7.5, color: "#fff", fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", letterSpacing: 0.3 }}>{dev.name}</span>
-                  </div>
-                );
-              }
-              const yDot = ((dev.placement.u - 1) / uCount) * panelH + uHpx / 2;
-              const xDot = dev.placement.x * (PANEL_W - 10) + 2;
-              return (
-                <div key={dev.id} title={`${dev.name} · U${dev.placement.u}`} style={{ position: "absolute", top: yDot - 5, left: xDot, width: 10, height: 10, borderRadius: "50%", backgroundColor: color, boxShadow: `0 0 6px ${color}, 0 0 12px ${color}60`, zIndex: 5 }} />
-              );
-            })}
           </div>
 
-          {/* LED strips */}
-          {leftStyle  && <div style={leftStyle} />}
-          {rightStyle && <div style={rightStyle} />}
+          {/* Tornillos */}
+          {[[5,5],[W-9,5],[5,H-9],[W-9,H-9]].map(([cx,cy],i) => (
+            <div key={i} style={{
+              position: "absolute", left: cx-4, top: cy-4, width: 8, height: 8,
+              borderRadius: "50%",
+              background: "radial-gradient(circle at 35% 35%, #2e4058 0%, #121e2e 70%)",
+              border: "1px solid #1e2e3e",
+            }}>
+              <div style={{ position: "absolute", left: "50%", top: 1, bottom: 1, width: 1, transform: "translateX(-50%)", background: "#07101a", borderRadius: 1 }} />
+            </div>
+          ))}
 
-          {/* Tornillos decorativos */}
-          {[[6, 6], [W - 10, 6], [6, H - 10], [W - 10, H - 10]].map(([cx, cy], i) => (
-            <div key={i} style={{ position: "absolute", left: cx - 3, top: cy - 3, width: 6, height: 6, borderRadius: "50%", backgroundColor: "#1f2d3d", border: "1px solid #374151" }} />
+          {/* Etiqueta inferior */}
+          <div style={{
+            position: "absolute", bottom: 3, left: RAIL, right: RAIL,
+            textAlign: "center", fontSize: 5.5, color: "#172030",
+            userSelect: "none", letterSpacing: 2.5, fontWeight: 700, fontFamily: "monospace",
+          }}>
+            {uCount}U RACK · REAR
+          </div>
+        </div>
+
+        {/* Cara lateral derecha */}
+        <div style={{
+          position: "absolute", width: DEPTH, height: H, left: W, top: 0,
+          transform: `rotateY(90deg) translateZ(${DEPTH/2}px) translateX(${-DEPTH/2}px)`,
+          transformOrigin: "left center",
+          background: "linear-gradient(to right, #0a1520 0%, #0e1a28 45%, #08100e 100%)",
+          border: "1px solid #141e2c", pointerEvents: "none", overflow: "hidden",
+        }}>
+          {Array.from({ length: 7 }).map((_, i) => (
+            <div key={i} style={{
+              position: "absolute", top: 16 + i * (H - 32) / 7,
+              left: 6, right: 6, height: 3,
+              background: "#060c14", borderRadius: 1, border: "1px solid #101820",
+            }} />
           ))}
         </div>
 
-        {/* === CARA LATERAL DERECHA === */}
-        <div style={{ position: "absolute", width: DEPTH, height: H, left: W, top: 0, transform: `rotateY(90deg) translateZ(${DEPTH / 2}px) translateX(${-DEPTH / 2}px)`, transformOrigin: "left center", background: "linear-gradient(to right, #0d1520, #0a1018)", border: "1px solid #1a2535", pointerEvents: "none" }} />
-
-        {/* === CARA SUPERIOR === */}
-        <div style={{ position: "absolute", width: W, height: DEPTH, top: -DEPTH, transform: `rotateX(90deg) translateZ(${-DEPTH / 2}px) translateY(${-DEPTH / 2}px)`, transformOrigin: "bottom center", background: "linear-gradient(to bottom, #0a0f18, #0d1520)", border: "1px solid #1a2535", pointerEvents: "none" }} />
+        {/* Cara superior */}
+        <div style={{
+          position: "absolute", width: W, height: DEPTH, top: -DEPTH,
+          transform: `rotateX(90deg) translateZ(${-DEPTH/2}px) translateY(${-DEPTH/2}px)`,
+          transformOrigin: "bottom center",
+          background: "linear-gradient(to bottom, #060b14 0%, #0c1622 100%)",
+          border: "1px solid #141e2c", pointerEvents: "none",
+        }} />
       </div>
     </div>
   );
