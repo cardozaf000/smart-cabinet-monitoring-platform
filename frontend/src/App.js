@@ -59,6 +59,9 @@ const App = () => {
     syncWithZabbix: false,
   });
 
+  // --- Alias personalizados de sensores ---
+  const [sensorAliases, setSensorAliases] = useState({});
+
   const { theme, loadPreferencesFromBackend } = useTheme();
 
   // --- Persistencia de UI ---
@@ -93,6 +96,15 @@ const App = () => {
     fetch(`${BACKEND}/api/gabinetes`)   // GET público, sin Authorization para evitar preflight
       .then((r) => r.ok ? r.json() : [])
       .then((data) => { if (Array.isArray(data) && data.length > 0) setCabinets(data); })
+      .catch(() => {});
+  }, []);
+
+  // --- Cargar alias de sensores desde backend ---
+  useEffect(() => {
+    if (!isAuthenticated()) return;
+    fetch(`${BACKEND}/api/sensores/aliases`)
+      .then((r) => r.ok ? r.json() : {})
+      .then((data) => { if (data && typeof data === "object") setSensorAliases(data); })
       .catch(() => {});
   }, []);
 
@@ -252,6 +264,28 @@ const App = () => {
   const handleUpdateSettings = useCallback((newSettings) => setSettings(newSettings), []);
   const handleSyncWithZabbix = useCallback(() => alert("Sincronizando con Zabbix... (simulado)"), []);
 
+  // --- Guardar alias de sensor (actualiza estado + backend) ---
+  const handleSensorRename = useCallback((sensorId, alias) => {
+    setSensorAliases((prev) => {
+      const next = { ...prev };
+      if (alias) next[sensorId] = alias;
+      else delete next[sensorId];
+      return next;
+    });
+    if (alias) {
+      fetch(`${BACKEND}/api/sensores/${encodeURIComponent(sensorId)}/alias`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", ...authHeader() },
+        body: JSON.stringify({ alias }),
+      }).catch(() => {});
+    } else {
+      fetch(`${BACKEND}/api/sensores/${encodeURIComponent(sensorId)}/alias`, {
+        method: "DELETE",
+        headers: authHeader(),
+      }).catch(() => {});
+    }
+  }, []);
+
   // --- Sincroniza estado de gabinetes ---
   useEffect(() => {
     setCabinets((prev) =>
@@ -303,6 +337,8 @@ const App = () => {
               <SensorManagement
                 sensors={sensors}
                 lecturas={lecturas}
+                sensorAliases={sensorAliases}
+                onSensorRename={handleSensorRename}
                 onUpdateSensor={handleUpdateSensor}
                 onDeleteSensor={handleDeleteSensor}
                 onAddSensor={handleAddSensor}
@@ -313,6 +349,8 @@ const App = () => {
               <CabinetManagement
                 cabinets={cabinets}
                 sensors={sensors}
+                sensorAliases={sensorAliases}
+                onSensorRename={handleSensorRename}
                 onAddCabinet={handleAddCabinet}
                 onUpdateCabinet={handleUpdateCabinet}
                 onDeleteCabinet={handleDeleteCabinet}
@@ -350,6 +388,8 @@ const App = () => {
       handleDeleteCabinet,
       handleUpdateSettings,
       handleSyncWithZabbix,
+      sensorAliases,
+      handleSensorRename,
       // backup page no necesita deps extra
     ]
   );
