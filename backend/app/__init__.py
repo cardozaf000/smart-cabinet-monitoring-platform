@@ -98,6 +98,9 @@ def create_app():
     from app.routes.ml_routes import ml_bp
     app.register_blueprint(ml_bp)
 
+    from app.routes.sensor_alias_routes import sensor_alias_bp
+    app.register_blueprint(sensor_alias_bp)
+
     # --- Auth: login y registro de usuarios ---
     try:
         from app.routes.auth_routes import auth_bp

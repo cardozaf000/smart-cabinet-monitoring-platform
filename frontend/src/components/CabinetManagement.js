@@ -181,7 +181,7 @@ const ToggleSwitch = ({ enabled, onChange, small }) => (
 ============================================================ */
 const DEFAULT_STRIP_V3 = { enabled: true, mode: 'fixed', color: '#00aaff', blinkSpeed: 'medium' };
 
-const CabinetManagement = ({ cabinets = [], sensors = [] }) => {
+const CabinetManagement = ({ cabinets = [], sensors = [], sensorAliases = {}, onSensorRename }) => {
   const [cabinetData, setCabinetData] = useState(
     () => cabinets?.[0] || { id: "cab-1", name: "Gabinete Principal", location: "Sala DC", status: "OK" }
   );
@@ -193,6 +193,22 @@ const CabinetManagement = ({ cabinets = [], sensors = [] }) => {
   const [editLocation, setEditLocation] = useState("");
   const startEdit = () => { setEditName(cabinetData.name || ""); setEditLocation(cabinetData.location || ""); setEditingInfo(true); };
   const saveEdit  = () => { setCabinetData(p => ({ ...p, name: editName, location: editLocation })); setEditingInfo(false); };
+
+  /* ---- Renombrar sensor desde vista gabinete ---- */
+  const [renamingDevice, setRenamingDevice] = useState(null); // {sensorId, defaultName}
+  const [renameVal, setRenameVal]           = useState('');
+  const renameRef = React.useRef(null);
+  React.useEffect(() => {
+    if (renamingDevice) {
+      setRenameVal(sensorAliases[renamingDevice.sensorId] || '');
+      setTimeout(() => renameRef.current?.focus(), 50);
+    }
+  }, [renamingDevice, sensorAliases]);
+  const commitDeviceRename = () => {
+    if (!renamingDevice) return;
+    onSensorRename?.(renamingDevice.sensorId, renameVal.trim());
+    setRenamingDevice(null);
+  };
 
   /* ---- Posición de la tira (una sola) ---- */
   const [strip1Position, setStrip1Position] = useState(() => localStorage.getItem('rgb_strip1_pos') || 'front-left');
@@ -327,7 +343,9 @@ const CabinetManagement = ({ cabinets = [], sensors = [] }) => {
     snmpDevices.forEach(d => list.push({ id: `device-snmp-${d.id}`, name: d.name, type: d.type, source: "snmp", uHeight: DEVICE_U_HEIGHT[d.type] || 1, desc: `${d.ip} · ${d.community}`, rawDevice: d }));
     (Array.isArray(sensors) ? sensors : []).forEach(s => list.push({
       id: `device-sensor-${s.id}-${s.type}`,
-      name: s.name || `Sensor ${s.id}`,
+      name: sensorAliases[String(s.id)] || s.name || `Sensor ${s.id}`,
+      defaultName: s.name || `Sensor ${s.id}`,
+      sensorId: String(s.id),
       type: String(s.type || "").toLowerCase(),
       source: "sensor", uHeight: 1,
       desc: s.puerto || "—",
@@ -724,7 +742,19 @@ const CabinetManagement = ({ cabinets = [], sensors = [] }) => {
                       <DeviceIcon type={device.type} size={14} color={color} />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium truncate">{device.name}</p>
+                      <div className="flex items-center gap-1 group/devname">
+                        <p className="text-sm font-medium truncate">{device.name}</p>
+                        {device.source === 'sensor' && onSensorRename && (
+                          <button
+                            onClick={() => setRenamingDevice({ sensorId: device.sensorId, defaultName: device.defaultName })}
+                            className="opacity-0 group-hover/devname:opacity-60 hover:!opacity-100 p-0.5 rounded transition shrink-0"
+                            title="Renombrar sensor"
+                            style={{ color: getColor(device.type) }}
+                          >
+                            <FiEdit2 size={10}/>
+                          </button>
+                        )}
+                      </div>
                       <p className="text-[11px] opacity-35 truncate">
                         {placed ? `U${pos.u} · ${pos.face === 'back' ? 'Trasera' : 'Frente'}` : "Sin ubicar"} · {device.desc}
                       </p>
@@ -838,6 +868,67 @@ const CabinetManagement = ({ cabinets = [], sensors = [] }) => {
           onAdded={() => { setShowSnmpModal(false); loadSnmpDevices(); }}
           cabinetId={cabinetData.id}
         />
+      )}
+
+      {/* ── Modal de renombrado de sensor ── */}
+      {renamingDevice && (
+        <Portal>
+          <div
+            style={{ position: 'fixed', inset: 0, zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.55)' }}
+            onClick={(e) => { if (e.target === e.currentTarget) setRenamingDevice(null); }}
+          >
+            <div
+              className="rounded-2xl border shadow-2xl p-5 w-full max-w-sm mx-4"
+              style={{ backgroundColor: 'var(--color-card)', borderColor: 'var(--color-border)' }}
+            >
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h2 className="text-sm font-bold" style={{ color: 'var(--color-text)' }}>Renombrar sensor</h2>
+                  <p className="text-[11px] mt-0.5 opacity-40" style={{ color: 'var(--color-text)' }}>
+                    Nombre original: {renamingDevice.defaultName}
+                  </p>
+                </div>
+                <button onClick={() => setRenamingDevice(null)} className="p-1.5 rounded-lg opacity-40 hover:opacity-80 transition" style={{ border: '1px solid var(--color-border)' }}>
+                  <FiX size={13}/>
+                </button>
+              </div>
+              <input
+                ref={renameRef}
+                value={renameVal}
+                onChange={(e) => setRenameVal(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') commitDeviceRename(); if (e.key === 'Escape') setRenamingDevice(null); }}
+                placeholder={renamingDevice.defaultName}
+                className="w-full px-3 py-2 text-sm rounded-xl mb-3"
+                style={{ backgroundColor: 'var(--color-bg)', color: 'var(--color-text)', border: '1px solid var(--color-border)' }}
+              />
+              <div className="flex gap-2">
+                {sensorAliases[renamingDevice.sensorId] && (
+                  <button
+                    onClick={() => { onSensorRename?.(renamingDevice.sensorId, ''); setRenamingDevice(null); }}
+                    className="flex-1 py-2 rounded-xl text-xs font-semibold border transition hover:opacity-80"
+                    style={{ borderColor: 'var(--color-border)', color: 'var(--color-text)', opacity: 0.6 }}
+                  >
+                    Restaurar original
+                  </button>
+                )}
+                <button
+                  onClick={() => setRenamingDevice(null)}
+                  className="flex-1 py-2 rounded-xl text-xs font-semibold border transition hover:opacity-80"
+                  style={{ borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={commitDeviceRename}
+                  className="flex-1 py-2 rounded-xl text-xs font-semibold text-white transition hover:opacity-80"
+                  style={{ backgroundColor: 'var(--color-primary)' }}
+                >
+                  Guardar
+                </button>
+              </div>
+            </div>
+          </div>
+        </Portal>
       )}
     </div>
   );

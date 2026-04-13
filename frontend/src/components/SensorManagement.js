@@ -223,11 +223,12 @@ function PanelFullscreen({ item, config, data, reading, onClose }) {
 /* Panel individual — memo evita re-renders cuando cambia
    state ajeno (editMode de otros paneles, fullscreen, etc.) */
 const PanelItem = memo(function PanelItem({
-  item, config, data, editMode, onRemove, onFullscreen, panelPxH, reading,
+  item, config, data, editMode, onRemove, onFullscreen, panelPxH, reading, displayName, onRename,
 }) {
   const isFixed    = item.type === 'fixed' || FIXED_IDS.has(item.id);
   const showHeader = !editMode && panelPxH >= 46;
   const showFooter = !editMode && panelPxH >= 78;
+  const label = displayName || item.sensorName || item.title;
 
   return (
     <div
@@ -253,7 +254,7 @@ const PanelItem = memo(function PanelItem({
           <div className="flex items-center gap-2 min-w-0">
             <FiMenu size={12} style={{ color: 'var(--color-primary)', flexShrink: 0 }}/>
             <span className="text-[11px] font-medium truncate" style={{ color: 'var(--color-text)', opacity: 0.75 }}>
-              {item.title}
+              {label || item.title}
             </span>
             {isFixed && (
               <span className="text-[10px] italic shrink-0" style={{ opacity: 0.35 }}>fijo</span>
@@ -288,10 +289,20 @@ const PanelItem = memo(function PanelItem({
           {showHeader && (
             <div className="flex items-center gap-1.5 px-2 pt-1.5 pb-0.5 flex-shrink-0">
               <span className="text-[11px] font-semibold truncate" style={{ color: 'var(--color-text)' }}>
-                {item.sensorName}
+                {label}
               </span>
               <TypeBadge type={item.measure} />
               <div className="ml-auto flex items-center gap-1 shrink-0">
+                {onRename && (
+                  <button
+                    onClick={() => onRename(item)}
+                    className="opacity-0 group-hover:opacity-100 w-4 h-4 rounded flex items-center justify-center"
+                    style={{ transition: 'opacity 0.15s', color: 'var(--color-primary)' }}
+                    title="Renombrar sensor"
+                  >
+                    <FiEdit2 size={9}/>
+                  </button>
+                )}
                 <button
                   onClick={() => onFullscreen(item)}
                   className="opacity-0 group-hover:opacity-100 w-4 h-4 rounded flex items-center justify-center"
@@ -357,7 +368,7 @@ const PanelItem = memo(function PanelItem({
 /* ============================================================
    COMPONENTE PRINCIPAL
 ============================================================ */
-const SensorManagement = ({ sensors = [], lecturas = [] }) => {
+const SensorManagement = ({ sensors = [], lecturas = [], sensorAliases = {}, onSensorRename }) => {
 
   const [displayItems, setDisplayItems] = useState(loadItems); // se sobreescribe con datos del backend
   const widgetsSyncedRef = useRef(false); // evitar sync antes de que carguen del backend
@@ -366,6 +377,17 @@ const SensorManagement = ({ sensors = [], lecturas = [] }) => {
   const [dashboardSensor,  setDashboardSensor]  = useState(null); // sensor dashboard completo
   const [fullscreenItem,   setFullscreenItem]   = useState(null); // panel individual fullscreen
   const [showWizard,   setShowWizard]   = useState(false);
+
+  /* ---- Renombrar sensor ---- */
+  const [renameTarget, setRenameTarget] = useState(null); // {sensorId, defaultName}
+  const [renameValue,  setRenameValue]  = useState('');
+  const renameInputRef = useRef(null);
+  useEffect(() => { if (renameTarget) { setRenameValue(sensorAliases[renameTarget.sensorId] || ''); setTimeout(() => renameInputRef.current?.focus(), 50); } }, [renameTarget, sensorAliases]);
+  const commitRename = () => {
+    if (!renameTarget) return;
+    onSensorRename?.(renameTarget.sensorId, renameValue.trim());
+    setRenameTarget(null);
+  };
   const [globalRange,  setGlobalRange]  = useState(() => {
     try { return JSON.parse(localStorage.getItem('globalRange')) || null; } catch { return null; }
   });
@@ -661,7 +683,10 @@ const SensorManagement = ({ sensors = [], lecturas = [] }) => {
     }));
   }, []);
 
-  const handleOpenDashboard  = useCallback((sensor) => setDashboardSensor(sensor), []);
+  const handleOpenDashboard  = useCallback((sensor) => {
+    const alias = sensorAliases[String(sensor.id)];
+    setDashboardSensor(alias ? { ...sensor, name: alias } : sensor);
+  }, [sensorAliases]);
   const handlePanelFullscreen = useCallback((item) => setFullscreenItem(item), []);
 
   const handleQuickAdd = useCallback((sensor) => {
@@ -1002,6 +1027,8 @@ const SensorManagement = ({ sensors = [], lecturas = [] }) => {
                     onFullscreen={handlePanelFullscreen}
                     panelPxH={panelPxH}
                     reading={reading}
+                    displayName={item.sensorId ? (sensorAliases[item.sensorId] || item.sensorName) : item.title}
+                    onRename={item.type !== 'fixed' && item.sensorId ? (it) => setRenameTarget({ sensorId: it.sensorId, defaultName: it.sensorName }) : null}
                   />
                 </div>
               );
@@ -1073,7 +1100,24 @@ const SensorManagement = ({ sensors = [], lecturas = [] }) => {
                       </div>
                     </td>
                     <td className="py-3 px-4">
-                      <span className="text-sm font-medium">{sensor.name}</span>
+                      <div className="flex items-center gap-1.5 group/name">
+                        <span className="text-sm font-medium">
+                          {sensorAliases[String(sensor.id)] || sensor.name}
+                        </span>
+                        {sensorAliases[String(sensor.id)] && (
+                          <span className="text-[10px] opacity-35 italic hidden group-hover/name:inline">
+                            ({sensor.name})
+                          </span>
+                        )}
+                        <button
+                          onClick={() => setRenameTarget({ sensorId: String(sensor.id), defaultName: sensor.name })}
+                          className="opacity-0 group-hover/name:opacity-60 hover:!opacity-100 p-0.5 rounded transition"
+                          title="Renombrar sensor"
+                          style={{ color: 'var(--color-primary)' }}
+                        >
+                          <FiEdit2 size={11}/>
+                        </button>
+                      </div>
                     </td>
                     <td className="py-3 px-4">
                       <TypeBadge type={sensor.type} />
@@ -1157,6 +1201,66 @@ const SensorManagement = ({ sensors = [], lecturas = [] }) => {
           onClose={() => setDashboardSensor(null)}
           onAddToDashboard={() => handleQuickAdd(dashboardSensor)}
         />
+      )}
+
+      {/* ── Modal de renombrado de sensor ── */}
+      {renameTarget && createPortal(
+        <div
+          style={{ position: 'fixed', inset: 0, zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.55)' }}
+          onClick={(e) => { if (e.target === e.currentTarget) setRenameTarget(null); }}
+        >
+          <div
+            className="rounded-2xl border shadow-2xl p-5 w-full max-w-sm"
+            style={{ backgroundColor: 'var(--color-card)', borderColor: 'var(--color-border)' }}
+          >
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h2 className="text-sm font-bold" style={{ color: 'var(--color-text)' }}>Renombrar sensor</h2>
+                <p className="text-[11px] mt-0.5 opacity-40" style={{ color: 'var(--color-text)' }}>
+                  Nombre original: {renameTarget.defaultName}
+                </p>
+              </div>
+              <button onClick={() => setRenameTarget(null)} className="p-1.5 rounded-lg opacity-40 hover:opacity-80 transition" style={{ border: '1px solid var(--color-border)' }}>
+                <FiMinimize2 size={13}/>
+              </button>
+            </div>
+            <input
+              ref={renameInputRef}
+              value={renameValue}
+              onChange={(e) => setRenameValue(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') commitRename(); if (e.key === 'Escape') setRenameTarget(null); }}
+              placeholder={renameTarget.defaultName}
+              className="w-full px-3 py-2 text-sm rounded-xl mb-3"
+              style={{ backgroundColor: 'var(--color-bg)', color: 'var(--color-text)', border: '1px solid var(--color-border)' }}
+            />
+            <div className="flex gap-2">
+              {sensorAliases[renameTarget.sensorId] && (
+                <button
+                  onClick={() => { onSensorRename?.(renameTarget.sensorId, ''); setRenameTarget(null); }}
+                  className="flex-1 py-2 rounded-xl text-xs font-semibold border transition hover:opacity-80"
+                  style={{ borderColor: 'var(--color-border)', color: 'var(--color-text)', opacity: 0.6 }}
+                >
+                  Restaurar original
+                </button>
+              )}
+              <button
+                onClick={() => setRenameTarget(null)}
+                className="flex-1 py-2 rounded-xl text-xs font-semibold border transition hover:opacity-80"
+                style={{ borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={commitRename}
+                className="flex-1 py-2 rounded-xl text-xs font-semibold text-white transition hover:opacity-80"
+                style={{ backgroundColor: 'var(--color-primary)' }}
+              >
+                Guardar
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
       )}
     </div>
   );
