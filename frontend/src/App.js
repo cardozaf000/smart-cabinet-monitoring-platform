@@ -14,6 +14,7 @@ import UsersAdmin from "./components/UsersAdmin";
 import AuditLog from "./components/AuditLog";
 import VisualSettings from "./components/VisualSettings";
 import BackupRestore from "./components/BackupRestore";
+import MLPage from "./components/MLPage";
 import TopBarUserInfo from "./components/TopBarUserInfo";
 import PrivateRoute from "./components/PrivateRoute";
 import LoginPage from "./components/LoginPage";
@@ -318,7 +319,7 @@ const App = () => {
               />
             )}
             {currentPage === "network" && <NetworkConfig />}
-            {currentPage === "alerts" && <AlertsPage />}
+            {currentPage === "alerts" && <AlertsPage onNavigate={setCurrentPage} />}
             {currentPage === "incidents" && <IncidentsPage />}
             {currentPage === "usuarios"  && <UsersAdmin />}
             {currentPage === "auditoria" && <AuditLog />}
@@ -326,6 +327,7 @@ const App = () => {
               <VisualSettings settings={settings} onUpdate={handleUpdateSettings} onSync={handleSyncWithZabbix} />
             )}
             {currentPage === "backup" && <BackupRestore />}
+            {currentPage === "ml"     && <MLPage />}
           </div>
         </main>
       </div>

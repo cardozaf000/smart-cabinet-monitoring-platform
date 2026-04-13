@@ -28,6 +28,9 @@ _datos_lock = threading.Lock()
 _estado_cache: Dict[str, Dict[str, Any]] = {}
 _estado_lock = threading.Lock()
 
+_mqtt_pub_client: Optional[mqtt.Client] = None
+_pub_lock = threading.Lock()
+
 
 def _map_lecturas(payload: Dict[str, Any]) -> List[Dict[str, Any]]:
     out: List[Dict[str, Any]] = []
@@ -343,6 +346,7 @@ def _attach_topic_callbacks(c: mqtt.Client):
 
 def start_mqtt():
     def run():
+        global _mqtt_pub_client
         c = mqtt.Client()
         c.on_connect = _on_connect
         c.on_message = _on_message
@@ -355,11 +359,29 @@ def start_mqtt():
             print("❌ No se pudo conectar al broker MQTT:", e)
             return
 
+        with _pub_lock:
+            _mqtt_pub_client = c
+
         print("🔄 Cliente MQTT en background...")
         c.loop_forever()
 
     th = threading.Thread(target=run, daemon=True)
     th.start()
+
+
+def publish_mqtt(topic: str, payload: str, qos: int = 0) -> bool:
+    """Publica un mensaje MQTT desde cualquier ruta Flask."""
+    with _pub_lock:
+        c = _mqtt_pub_client
+    if c is None:
+        print(f"[MQTT] publish_mqtt: cliente no disponible (topic={topic})")
+        return False
+    try:
+        result = c.publish(topic, payload, qos=qos)
+        return result.rc == 0
+    except Exception as e:
+        print(f"[MQTT] publish_mqtt error: {e}")
+        return False
 
 
 def get_datos() -> List[Dict[str, Any]]:

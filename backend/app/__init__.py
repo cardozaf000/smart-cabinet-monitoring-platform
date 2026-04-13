@@ -86,11 +86,17 @@ def create_app():
     from app.routes.cabinets_routes import cabinets_bp
     app.register_blueprint(cabinets_bp)
 
+    from app.routes.rgb_routes import rgb_bp
+    app.register_blueprint(rgb_bp)
+
     from app.routes.backup_routes import backup_bp
     app.register_blueprint(backup_bp)
 
     from app.routes.preferences_routes import preferences_bp
     app.register_blueprint(preferences_bp)
+
+    from app.routes.ml_routes import ml_bp
+    app.register_blueprint(ml_bp)
 
     # --- Auth: login y registro de usuarios ---
     try:

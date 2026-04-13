@@ -5,7 +5,7 @@ import { getUser, logout } from "../utils/auth";
 import {
   FiChevronLeft, FiLogOut, FiCpu, FiGrid, FiBell,
   FiShield, FiSliders, FiSun, FiMoon, FiServer, FiActivity,
-  FiUser, FiEye, FiAlertOctagon, FiArchive,
+  FiUser, FiEye, FiAlertOctagon, FiArchive, FiZap,
 } from "react-icons/fi";
 import { useTheme } from "../theme/ThemeProvider";
 import { BACKEND, resolveLogoUrl } from "../utils/api";
@@ -19,6 +19,7 @@ const NAV_MAIN = [
   { key: "network",   label: "Config. de Red",  icon: FiServer       },
   { key: "alerts",    label: "Alertas",         icon: FiBell         },
   { key: "incidents", label: "Incidencias",     icon: FiAlertOctagon },
+  { key: "ml",        label: "Detección ML",    icon: FiZap          },
 ];
 const NAV_ADMIN = [
   { key: "usuarios",  label: "Usuarios",   icon: FiUser    },

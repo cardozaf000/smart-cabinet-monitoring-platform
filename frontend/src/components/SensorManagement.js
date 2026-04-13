@@ -9,6 +9,7 @@ import AddChartWizard from './AddChartWizard';
 import SensorDashboard from './SensorDashboard';
 import {
   FiClock, FiRefreshCcw, FiEdit2, FiMenu, FiMaximize2, FiMinimize2, FiBarChart2,
+  FiAlertTriangle, FiCheckCircle, FiCpu,
 } from 'react-icons/fi';
 import { BACKEND } from '../utils/api';
 import { authHeader } from '../utils/auth';
@@ -685,6 +686,22 @@ const SensorManagement = ({ sensors = [], lecturas = [] }) => {
     (!globalRange || w.type === 'fixed') ? w : { ...w, timeRange: globalRange }
   , [globalRange]);
 
+  /* ---- Estado ML (última inferencia) ---- */
+  const [mlStatus, setMlStatus] = useState(null);
+  useEffect(() => {
+    fetch(`${BACKEND}/api/anomalias?limit=1`)
+      .then(r => r.ok ? r.json() : [])
+      .then(d => { if (Array.isArray(d) && d.length > 0) setMlStatus(d[0]); })
+      .catch(() => {});
+    const iv = setInterval(() => {
+      fetch(`${BACKEND}/api/anomalias?limit=1`)
+        .then(r => r.ok ? r.json() : [])
+        .then(d => { if (Array.isArray(d) && d.length > 0) setMlStatus(d[0]); })
+        .catch(() => {});
+    }, 60_000);
+    return () => clearInterval(iv);
+  }, []);
+
   /* ============================================================
      RENDER
   ============================================================ */
@@ -713,6 +730,25 @@ const SensorManagement = ({ sensors = [], lecturas = [] }) => {
           <p className="text-xs ml-4" style={{ color: 'var(--text-color-muted, #9ca3af)' }}>
             {totalPanels} paneles · datos en tiempo real
           </p>
+          {/* Indicador estado ML */}
+          {mlStatus && (
+            <div className="flex items-center gap-1.5 mt-1.5 ml-4">
+              <FiCpu size={11} className="opacity-40" />
+              <span className="text-[11px] opacity-50">ML:</span>
+              {mlStatus.es_anomalia ? (
+                <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-1.5 py-0.5 rounded-full"
+                  style={{ backgroundColor: '#ef444422', color: '#f87171', border: '1px solid #ef444430' }}>
+                  <FiAlertTriangle size={9} /> Anomalía detectada
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-1.5 py-0.5 rounded-full"
+                  style={{ backgroundColor: '#10b98122', color: '#34d399', border: '1px solid #10b98130' }}>
+                  <FiCheckCircle size={9} /> Normal
+                </span>
+              )}
+              <span className="text-[10px] opacity-30 font-mono">{mlStatus.timestamp}</span>
+            </div>
+          )}
         </div>
 
         {/* Toolbar */}

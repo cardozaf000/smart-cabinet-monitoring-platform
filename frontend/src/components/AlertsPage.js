@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import ProfileModal    from './alerts/ProfileModal';
 import RuleModal       from './alerts/RuleModal';
 import TestEmailModal  from './alerts/TestEmailModal';
-import { FiPlus, FiEdit2, FiTrash2, FiRefreshCcw, FiCheckCircle, FiAlertCircle, FiMail } from 'react-icons/fi';
+import { FiPlus, FiEdit2, FiTrash2, FiRefreshCcw, FiCheckCircle, FiAlertCircle, FiMail, FiAlertTriangle, FiCpu } from 'react-icons/fi';
 import { BACKEND } from '../utils/api';
 
 /* ---- LiveDot ---- */
@@ -52,7 +52,131 @@ function TlsBadge({ mode }) {
 /* ============================================================
    COMPONENTE PRINCIPAL
 ============================================================ */
-export default function AlertsPage() {
+
+/* ---- Parsear features_json de forma segura ---- */
+function parseFeatures(raw) {
+  if (!raw) return {};
+  try { return typeof raw === 'string' ? JSON.parse(raw) : raw; }
+  catch { return {}; }
+}
+
+/* ---- ML anomalias recientes — banner mejorado ---- */
+function MLAnomaliasBanner({ onNavigate }) {
+  const [items,  setItems]  = useState([]);
+  const [mlLoad, setMlLoad] = useState(false);
+
+  useEffect(() => {
+    setMlLoad(true);
+    fetch(`${BACKEND}/api/anomalias?solo_anomalias=true&limit=5`)
+      .then(r => r.ok ? r.json() : [])
+      .then(d => setItems(Array.isArray(d) ? d : []))
+      .catch(() => {})
+      .finally(() => setMlLoad(false));
+  }, []);
+
+  if (mlLoad) return null;
+  if (items.length === 0) return null;
+
+  return (
+    <div className="rounded-2xl border" style={{ backgroundColor: 'var(--color-card)', borderColor: '#ef444440' }}>
+
+      {/* Cabecera del banner */}
+      <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-3.5 border-b"
+        style={{ borderColor: '#ef444430' }}>
+        <div className="flex items-center gap-2.5">
+          <div className="w-7 h-7 rounded-lg flex items-center justify-center"
+            style={{ backgroundColor: '#ef444422', color: '#f87171' }}>
+            <FiCpu size={14} />
+          </div>
+          <div>
+            <h2 className="text-sm font-semibold tracking-wide uppercase" style={{ color: '#f87171' }}>
+              Anomalías ML sin revisar
+            </h2>
+            <p className="text-xs opacity-40 mt-0.5">
+              {items.length} detección(es) reciente(s) · Isolation Forest
+            </p>
+          </div>
+        </div>
+        {onNavigate && (
+          <button
+            onClick={() => onNavigate('ml')}
+            className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg transition hover:opacity-80"
+            style={{ backgroundColor: '#ef444420', color: '#f87171', border: '1px solid #ef444440' }}>
+            Ver Detección ML →
+          </button>
+        )}
+      </div>
+
+      {/* Lista de anomalías con desglose de sensores */}
+      <div className="divide-y" style={{ borderColor: '#ef444415' }}>
+        {items.map(a => {
+          const features = parseFeatures(a.features_json);
+          const score    = Number(a.score_anomalia ?? 0);
+
+          // Sensores con valor disponible para mostrar
+          const sensorPills = [
+            features.temperatura != null && { label: `${Number(features.temperatura).toFixed(1)} °C`, key: 'temp' },
+            features.humedad     != null && { label: `${Number(features.humedad).toFixed(0)} %`,    key: 'hum'  },
+            features.humo        != null && { label: `${Number(features.humo).toFixed(0)} ppm`,     key: 'humo' },
+            features.luz         != null && { label: `${Number(features.luz).toFixed(0)} lux`,      key: 'luz'  },
+            features.movimiento  != null && features.movimiento && { label: 'Movimiento',            key: 'pir'  },
+            features.reed        != null && features.reed && { label: 'Puerta abierta',              key: 'reed' },
+            features.mpu6050     != null && features.mpu6050 && { label: 'IMU anómalo',              key: 'mpu'  },
+          ].filter(Boolean);
+
+          return (
+            <div key={a.id} className="px-5 py-3 flex flex-wrap items-center gap-3">
+
+              {/* Icono + timestamp */}
+              <div className="flex items-center gap-2 shrink-0">
+                <FiAlertTriangle size={14} style={{ color: '#f87171' }} />
+                <span className="text-xs font-mono opacity-50">{a.timestamp}</span>
+              </div>
+
+              {/* Score */}
+              <span className="text-xs font-semibold font-mono px-2 py-0.5 rounded-full shrink-0"
+                style={{ backgroundColor: '#ef444422', color: '#f87171', border: '1px solid #ef444430' }}>
+                score: {score.toFixed(4)}
+              </span>
+
+              {/* Pills de sensores */}
+              <div className="flex flex-wrap gap-1.5">
+                {sensorPills.map(p => (
+                  <span key={p.key}
+                    className="text-[11px] font-mono px-2 py-0.5 rounded-full"
+                    style={{ backgroundColor: 'color-mix(in srgb,var(--color-primary) 12%,transparent)',
+                             color: 'var(--color-primary)', border: '1px solid color-mix(in srgb,var(--color-primary) 25%,transparent)' }}>
+                    {p.label}
+                  </span>
+                ))}
+              </div>
+
+              {/* Badge sin revisar */}
+              {!a.revisado && (
+                <span className="ml-auto text-[10px] font-semibold px-2 py-0.5 rounded-full shrink-0"
+                  style={{ backgroundColor: '#f59e0b22', color: '#fbbf24', border: '1px solid #f59e0b40' }}>
+                  Sin revisar
+                </span>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Footer con instrucción */}
+      <div className="px-5 py-3 border-t flex items-center gap-2"
+        style={{ borderColor: '#ef444420' }}>
+        <FiAlertTriangle size={11} style={{ color: '#f59e0b', flexShrink: 0 }} />
+        <p className="text-[11px] opacity-40">
+          Revisa estos eventos en <strong className="opacity-70">Detección ML</strong> para confirmarlos
+          o descartarlos y retroalimentar el modelo.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+export default function AlertsPage({ onNavigate }) {
   const [profiles,  setProfiles]  = useState([]);
   const [rules,     setRules]     = useState([]);
   const [loading,   setLoading]   = useState(false);
@@ -140,6 +264,9 @@ export default function AlertsPage() {
   ============================================================ */
   return (
     <div className="space-y-5 pb-6">
+
+      {/* BANNER ML — solo aparece si hay anomalías recientes sin revisar */}
+      <MLAnomaliasBanner onNavigate={onNavigate} />
 
       {/* HEADER */}
       <div className="flex flex-wrap items-center justify-between gap-3">
