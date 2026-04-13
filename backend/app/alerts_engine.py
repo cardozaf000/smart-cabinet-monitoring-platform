@@ -8,11 +8,99 @@
 from datetime import datetime, timedelta
 from typing import Dict, Any, Optional
 import json
+import os
 import smtplib, ssl
 from email.mime.text import MIMEText
 
 from app.db_config import get_db_connection
 from app.crypto_utils import decrypt_str
+
+_ALERT_CONFIG_PATH = os.path.join(os.path.dirname(__file__), 'led_alert_config.json')
+
+_BLINK_SPEED_MS = {'slow': 1000, 'medium': 500, 'fast': 200}
+
+def _hex_to_rgb(hex_color: str):
+    h = str(hex_color or "#000000").lstrip('#')
+    if len(h) == 3:
+        h = ''.join(c * 2 for c in h)
+    try:
+        v = int(h, 16)
+        return [(v >> 16) & 255, (v >> 8) & 255, v & 255]
+    except Exception:
+        return [0, 0, 0]
+
+
+def _fire_led_for_alert(rule: Dict[str, Any], lectura: Dict[str, Any]) -> None:
+    """Publica comando MQTT a la tira LED cuando se activa una alerta."""
+    try:
+        from app.mqtt_client import publish_mqtt
+        with open(_ALERT_CONFIG_PATH) as f:
+            cfg = json.load(f)
+    except Exception:
+        return
+
+    if not cfg.get('alert_bindings_enabled'):
+        return
+
+    rule_id   = str(rule.get('id', ''))
+    gab_id    = lectura.get('gabinete_id') or cfg.get('strip', {}).get('gabinete_id') or 'cab-1'
+    bindings  = cfg.get('alert_bindings', [])
+
+    # Primero busca por rule_id exacto, luego por comodín 'any'
+    matched = next(
+        (b for b in bindings if str(b.get('rule_id', '')) == rule_id),
+        next((b for b in bindings if str(b.get('rule_id', '')) == 'any'), None)
+    )
+    if not matched:
+        return
+
+    mode       = matched.get('action_mode', 'blink')
+    color      = matched.get('action_color', '#ff0000')
+    speed_key  = matched.get('action_speed', 'medium')
+    period_ms  = _BLINK_SPEED_MS.get(speed_key, 500)
+    rgb        = _hex_to_rgb(color)
+
+    payload = json.dumps({
+        "r": rgb[0], "g": rgb[1], "b": rgb[2],
+        "mode": mode,
+        "period_ms": period_ms,
+        "source": "alert_engine",
+    })
+    topic = f"actuadores/{gab_id}/rgb"
+    publish_mqtt(topic, payload)
+    print(f"[alerts-LED] alerta={rule.get('name')} → modo={mode} color={color} topic={topic}")
+
+
+def _restore_led_after_alert(lectura: Dict[str, Any]) -> None:
+    """Restaura el LED al estado normal cuando una alerta se resuelve."""
+    try:
+        from app.mqtt_client import publish_mqtt
+        with open(_ALERT_CONFIG_PATH) as f:
+            cfg = json.load(f)
+    except Exception:
+        return
+
+    if not cfg.get('restore_on_resolve', True):
+        return
+
+    strip  = cfg.get('strip', {})
+    gab_id = lectura.get('gabinete_id') or strip.get('gabinete_id') or 'cab-1'
+
+    if not strip.get('enabled', True):
+        payload = json.dumps({"r": 0, "g": 0, "b": 0, "mode": "off"})
+    else:
+        rgb  = _hex_to_rgb(strip.get('color', '#00aaff'))
+        mode = strip.get('mode', 'fixed')
+        payload = json.dumps({
+            "r": rgb[0], "g": rgb[1], "b": rgb[2],
+            "mode": mode,
+            "period_ms": 500,
+            "source": "alert_engine_restore",
+        })
+
+    topic = f"actuadores/{gab_id}/rgb"
+    publish_mqtt(topic, payload)
+    print(f"[alerts-LED] alerta resuelta → restaurando LED normal topic={topic}")
 
 
 def _now() -> datetime:
@@ -212,6 +300,10 @@ def evaluate_new_reading(lectura: Dict[str, Any]):
                     if inc_id:
                         _current_incident_id[rid] = inc_id
 
+                # LED: disparar solo la primera vez que se abre el incidente
+                if rid not in _current_incident_id:
+                    _fire_led_for_alert(r, lectura)
+
                 # Cooldown para email
                 last = _last_notified.get(rid)
                 if (last is None) or ((ts - last) >= timedelta(seconds=cd)):
@@ -243,3 +335,4 @@ def evaluate_new_reading(lectura: Dict[str, Any]):
                 inc_id = _current_incident_id.pop(rid, None)
                 if inc_id:
                     _resolve_incident(inc_id)
+                    _restore_led_after_alert(lectura)

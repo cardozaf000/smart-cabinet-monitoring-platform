@@ -179,7 +179,7 @@ const ToggleSwitch = ({ enabled, onChange, small }) => (
 /* ============================================================
    COMPONENTE PRINCIPAL
 ============================================================ */
-const DEFAULT_STRIP = { enabled: true, mode: 'fixed', fixedColor: '#00aaff', alertColor: '#ff0000' };
+const DEFAULT_STRIP_V3 = { enabled: true, mode: 'fixed', color: '#00aaff', blinkSpeed: 'medium' };
 
 const CabinetManagement = ({ cabinets = [], sensors = [] }) => {
   const [cabinetData, setCabinetData] = useState(
@@ -194,95 +194,94 @@ const CabinetManagement = ({ cabinets = [], sensors = [] }) => {
   const startEdit = () => { setEditName(cabinetData.name || ""); setEditLocation(cabinetData.location || ""); setEditingInfo(true); };
   const saveEdit  = () => { setCabinetData(p => ({ ...p, name: editName, location: editLocation })); setEditingInfo(false); };
 
-  /* ---- Strip count ---- */
-  const [stripCount, setStripCount] = useState(() => parseInt(localStorage.getItem('rgb_strip_count') || '2', 10));
-
-  /* ---- Strip position config ---- */
-  // strip1Position: para 1 sola tira, su posición física
+  /* ---- Posición de la tira (una sola) ---- */
   const [strip1Position, setStrip1Position] = useState(() => localStorage.getItem('rgb_strip1_pos') || 'front-left');
-  // strip2Face: para 2 tiras, en qué cara van (front o back)
-  const [strip2Face, setStrip2Face] = useState(() => localStorage.getItem('rgb_strip2_face') || 'front');
 
-  /* ---- Per-strip state ---- */
-  const [strips, setStrips] = useState(() => {
+  /* ---- Estado de la tira LED ---- */
+  const [strip, setStripState] = useState(() => {
     try {
-      const s = localStorage.getItem('rgb_strips_v2');
-      return s ? JSON.parse(s) : [DEFAULT_STRIP, DEFAULT_STRIP, DEFAULT_STRIP, DEFAULT_STRIP];
-    } catch {
-      return [DEFAULT_STRIP, DEFAULT_STRIP, DEFAULT_STRIP, DEFAULT_STRIP];
-    }
+      const s = localStorage.getItem('rgb_strip_v3');
+      return s ? JSON.parse(s) : DEFAULT_STRIP_V3;
+    } catch { return DEFAULT_STRIP_V3; }
   });
-  useEffect(() => { localStorage.setItem('rgb_strips_v2', JSON.stringify(strips)); }, [strips]);
+  useEffect(() => { localStorage.setItem('rgb_strip_v3', JSON.stringify(strip)); }, [strip]);
 
-  const [selectedStripId, setSelectedStripId] = useState(0);
-  const strip = strips[selectedStripId] || DEFAULT_STRIP;
-  const setStrip = (patch) => setStrips(prev => prev.map((s, i) => i === selectedStripId ? { ...s, ...patch } : s));
+  const updateStrip = (patch) => setStripState(prev => ({ ...prev, ...patch }));
 
-  /* ---- Calcula qué tira va a cada lado de cada cara ---- */
+  /* ---- Bindings alerta → LED ---- */
+  const [alertBindingsEnabled, setAlertBindingsEnabled] = useState(
+    () => localStorage.getItem('led_alert_bindings_enabled') === 'true'
+  );
+  const [alertBindings, setAlertBindings] = useState(() => {
+    try {
+      const s = localStorage.getItem('led_alert_bindings_v1');
+      return s ? JSON.parse(s) : [];
+    } catch { return []; }
+  });
+  useEffect(() => { localStorage.setItem('led_alert_bindings_v1', JSON.stringify(alertBindings)); }, [alertBindings]);
+  const [alertRules, setAlertRules] = useState([]);
+  const [newBinding, setNewBinding] = useState({ rule_id: '', action_mode: 'blink', action_color: '#ff0000', action_speed: 'medium' });
+  const [bindingsSaved, setBindingsSaved] = useState(false);
+
+  useEffect(() => {
+    fetch(`${BACKEND_URL}/alerts/rules`, { headers: authHeader() })
+      .then(r => r.json())
+      .then(d => { if (Array.isArray(d)) setAlertRules(d); })
+      .catch(() => {});
+  }, []);
+
+  /* ---- Qué tira va en cada cara (solo frontal) ---- */
   const getFaceStrips = useCallback((face) => {
-    const DS = DEFAULT_STRIP;
-    if (stripCount === 1) {
-      const s0 = strips[0] || DS;
-      if (face === 'front') return {
-        leftStrip: strip1Position === 'front-left'  ? s0 : null, leftId: strip1Position === 'front-left'  ? 0 : null,
-        rightStrip: strip1Position === 'front-right' ? s0 : null, rightId: strip1Position === 'front-right' ? 0 : null,
-      };
-      return {
-        leftStrip: strip1Position === 'back-left'  ? s0 : null, leftId: strip1Position === 'back-left'  ? 0 : null,
-        rightStrip: strip1Position === 'back-right' ? s0 : null, rightId: strip1Position === 'back-right' ? 0 : null,
-      };
-    }
-    if (stripCount === 2) {
-      const active = strip2Face === face;
-      return {
-        leftStrip: active ? (strips[0] || DS) : null, leftId: active ? 0 : null,
-        rightStrip: active ? (strips[1] || DS) : null, rightId: active ? 1 : null,
-      };
-    }
-    // 4 tiras
-    if (face === 'front') return {
-      leftStrip: strips[0] || DS, leftId: 0,
-      rightStrip: strips[1] || DS, rightId: 1,
-    };
+    if (face !== 'front') return { leftStrip: null, rightStrip: null };
     return {
-      leftStrip: strips[2] || DS, leftId: 2,
-      rightStrip: strips[3] || DS, rightId: 3,
+      leftStrip:  strip1Position === 'front-left'  ? strip : null,
+      rightStrip: strip1Position === 'front-right' ? strip : null,
     };
-  }, [strips, stripCount, strip1Position, strip2Face]);
+  }, [strip, strip1Position]);
 
   const lastCmdRef = React.useRef(0);
 
-  const getStripPosition = useCallback((id) => {
-    if (stripCount === 1) return strip1Position;
-    if (stripCount === 2) return `${strip2Face}-${id === 0 ? 'left' : 'right'}`;
-    return ['front-left', 'front-right', 'back-left', 'back-right'][id] || 'front-left';
-  }, [stripCount, strip1Position, strip2Face]);
-
-  const sendLedCommand = useCallback(async (stripId, mode, extra = {}) => {
+  const sendLedCommand = useCallback(async (mode, extra = {}) => {
     const now = Date.now();
     if (now - lastCmdRef.current < 180) return;
     lastCmdRef.current = now;
-    const st = strips[stripId] || DEFAULT_STRIP;
-    const [r, g, b] = hexToRgb(st.fixedColor);
+    const [r, g, b] = hexToRgb(strip.color);
     const payload = {
       type: "led_strip",
-      mode: st.enabled ? mode : "off",
-      strip_id: stripId,
-      position: getStripPosition(stripId),
+      mode: strip.enabled ? mode : "off",
+      position: strip1Position,
       gabinete_id: cabinetData.id || "cab-1",
       rgb: mode === 'off' ? [0, 0, 0] : [r, g, b],
       ...extra,
     };
     try {
-      // text/plain no dispara preflight CORS, evitando el bloqueo de OPTIONS
       await fetch(`${BACKEND_URL}/led_cmd`, {
         method: "POST",
         mode: "no-cors",
         headers: { "Content-Type": "text/plain" },
         body: JSON.stringify(payload),
       });
-    } catch { /* network error — silently ignore */ }
-  }, [strips, cabinetData.id, getStripPosition]);
+    } catch { }
+  }, [strip, strip1Position, cabinetData.id]);
+
+  const saveAlertBindingsToBackend = useCallback(async () => {
+    const config = {
+      strip: { enabled: strip.enabled, position: strip1Position, mode: strip.mode, color: strip.color },
+      alert_bindings_enabled: alertBindingsEnabled,
+      alert_bindings: alertBindings,
+      restore_on_resolve: true,
+    };
+    try {
+      await fetch(`${BACKEND_URL}/led_alert_config`, {
+        method: "POST",
+        mode: "no-cors",
+        headers: { "Content-Type": "text/plain" },
+        body: JSON.stringify(config),
+      });
+      setBindingsSaved(true);
+      setTimeout(() => setBindingsSaved(false), 2000);
+    } catch { }
+  }, [strip, strip1Position, alertBindingsEnabled, alertBindings]);
 
   /* ---- Posiciones en el rack ---- */
   const [placements, setPlacements] = useState(() => {
@@ -342,25 +341,37 @@ const CabinetManagement = ({ cabinets = [], sensors = [] }) => {
     [allDevices, placements]
   );
 
-  /* ---- LED mode labels & descriptions ---- */
+  /* ---- Modos de la tira LED ---- */
   const MODES = [
     { id: 'off',       label: 'Apagado',      desc: 'Tira apagada' },
     { id: 'fixed',     label: 'Fijo',         desc: 'Color constante' },
+    { id: 'blink',     label: 'Intermitente', desc: 'Parpadeo rítmico' },
+    { id: 'pulse',     label: 'Pulso',        desc: 'Fade in/out suave' },
     { id: 'door_open', label: 'Puerta',       desc: 'Enciende al abrir' },
     { id: 'auto_temp', label: 'Temperatura',  desc: 'Color según °C' },
-    { id: 'alert',     label: 'Alerta',       desc: 'Enciende en alertas' },
+  ];
+
+  const BLINK_SPEEDS = [
+    { id: 'slow',   label: 'Lento',  period_ms: 1000 },
+    { id: 'medium', label: 'Medio',  period_ms: 500  },
+    { id: 'fast',   label: 'Rápido', period_ms: 200  },
   ];
 
   const handleModeClick = (modeId) => {
-    setStrip({ mode: modeId, enabled: modeId !== 'off' });
+    updateStrip({ mode: modeId, enabled: modeId !== 'off' });
+    const speed = BLINK_SPEEDS.find(s => s.id === strip.blinkSpeed) || BLINK_SPEEDS[1];
     if (modeId === 'off') {
-      sendLedCommand(selectedStripId, 'off', { rgb: [0, 0, 0] });
+      sendLedCommand('off', { rgb: [0, 0, 0] });
     } else if (modeId === 'fixed') {
-      sendLedCommand(selectedStripId, 'fixed', { rgb: hexToRgb(strip.fixedColor) });
+      sendLedCommand('fixed', { rgb: hexToRgb(strip.color) });
+    } else if (modeId === 'blink') {
+      sendLedCommand('blink', { rgb: hexToRgb(strip.color), period_ms: speed.period_ms });
+    } else if (modeId === 'pulse') {
+      sendLedCommand('pulse', { rgb: hexToRgb(strip.color), period_ms: 1200 });
     } else if (modeId === 'door_open') {
-      sendLedCommand(selectedStripId, 'door_open', { rgb: hexToRgb(strip.fixedColor), flash: { period_ms: 500 } });
+      sendLedCommand('door_open', { rgb: hexToRgb(strip.color), period_ms: 500 });
     } else if (modeId === 'auto_temp') {
-      sendLedCommand(selectedStripId, 'auto_temp', {
+      sendLedCommand('auto_temp', {
         bands: [
           { lt: 20, rgb: [0, 110, 255] },
           { gte: 20, lt: 27, rgb: [0, 200, 120] },
@@ -368,8 +379,6 @@ const CabinetManagement = ({ cabinets = [], sensors = [] }) => {
           { gte: 30, rgb: [255, 60, 60] },
         ],
       });
-    } else if (modeId === 'alert') {
-      sendLedCommand(selectedStripId, 'alert', { rgb: hexToRgb(strip.alertColor) });
     }
   };
 
@@ -439,110 +448,59 @@ const CabinetManagement = ({ cabinets = [], sensors = [] }) => {
           {/* Control LED */}
           <div className="rounded-2xl border overflow-hidden" style={{ backgroundColor: "var(--color-card)", borderColor: "var(--color-border)" }}>
 
-            {/* Header: title + count selector */}
+            {/* Header */}
             <div className="flex items-center justify-between px-4 py-3 border-b" style={{ borderColor: "var(--color-border)" }}>
-              <span className="text-sm font-semibold">Tiras LED</span>
-              <select
-                value={stripCount}
-                onChange={e => {
-                  const v = parseInt(e.target.value, 10);
-                  setStripCount(v);
-                  localStorage.setItem('rgb_strip_count', String(v));
-                  if (selectedStripId >= v) setSelectedStripId(0);
-                }}
-                className="text-xs px-2 py-1 rounded-lg"
-                style={{ backgroundColor: "var(--color-bg)", color: "var(--color-text)", border: "1px solid var(--color-border)" }}
-              >
-                <option value={1}>1 tira</option>
-                <option value={2}>2 tiras</option>
-                <option value={4}>4 tiras</option>
-              </select>
+              <span className="text-sm font-semibold">Tira LED</span>
+              <div className="flex items-center gap-2">
+                <span className="text-xs opacity-40">{strip.enabled ? "Encendida" : "Apagada"}</span>
+                <ToggleSwitch small enabled={strip.enabled}
+                  onChange={(v) => {
+                    updateStrip({ enabled: v, mode: v ? 'fixed' : 'off' });
+                    sendLedCommand(v ? 'fixed' : 'off', { rgb: v ? hexToRgb(strip.color) : [0, 0, 0] });
+                  }} />
+              </div>
             </div>
 
-            {/* Posición (1 tira) */}
-            {stripCount === 1 && (
-              <div className="px-4 pt-3 pb-1">
-                <p className="text-[11px] opacity-40 mb-1.5">Posición</p>
-                <div className="grid grid-cols-2 gap-1">
+            <div className="px-4 pb-4 pt-3 space-y-4">
+
+              {/* Posición */}
+              <div>
+                <p className="text-[11px] opacity-40 mb-1.5">Posición en el gabinete</p>
+                <div className="grid grid-cols-2 gap-1.5">
                   {[
-                    { id: 'front-left', label: 'Frente Izq' },
-                    { id: 'front-right', label: 'Frente Der' },
-                    { id: 'back-left', label: 'Trasera Izq' },
-                    { id: 'back-right', label: 'Trasera Der' },
-                  ].map(p => (
-                    <button key={p.id}
-                      onClick={() => { setStrip1Position(p.id); localStorage.setItem('rgb_strip1_pos', p.id); }}
-                      className="px-2 py-1.5 rounded-lg text-xs font-medium border transition-all"
+                    { id: 'front-left',  label: 'Frente Izquierda' },
+                    { id: 'front-right', label: 'Frente Derecha' },
+                  ].map(pos => (
+                    <button key={pos.id}
+                      onClick={() => { setStrip1Position(pos.id); localStorage.setItem('rgb_strip1_pos', pos.id); }}
+                      className="px-2 py-2 rounded-lg text-xs font-medium border transition-all"
                       style={{
-                        backgroundColor: strip1Position === p.id ? "color-mix(in srgb,var(--color-primary) 12%,transparent)" : "transparent",
-                        borderColor: strip1Position === p.id ? "var(--color-primary)" : "var(--color-border)",
-                        color: strip1Position === p.id ? "var(--color-primary)" : "var(--color-text)",
+                        backgroundColor: strip1Position === pos.id ? "color-mix(in srgb,var(--color-primary) 12%,transparent)" : "transparent",
+                        borderColor: strip1Position === pos.id ? "var(--color-primary)" : "var(--color-border)",
+                        color: strip1Position === pos.id ? "var(--color-primary)" : "var(--color-text)",
                       }}>
-                      {p.label}
+                      {pos.label}
                     </button>
                   ))}
                 </div>
               </div>
-            )}
 
-            {/* Cara (2 tiras) */}
-            {stripCount === 2 && (
-              <div className="flex items-center gap-2 px-4 pt-3 pb-1">
-                <span className="text-[11px] opacity-40">Panel:</span>
-                {[{ id: 'front', label: 'Frente' }, { id: 'back', label: 'Trasera' }].map(f => (
-                  <button key={f.id}
-                    onClick={() => { setStrip2Face(f.id); localStorage.setItem('rgb_strip2_face', f.id); }}
-                    className="px-3 py-1 rounded-lg text-xs font-medium border transition-all"
-                    style={{
-                      backgroundColor: strip2Face === f.id ? "color-mix(in srgb,var(--color-primary) 12%,transparent)" : "transparent",
-                      borderColor: strip2Face === f.id ? "var(--color-primary)" : "var(--color-border)",
-                      color: strip2Face === f.id ? "var(--color-primary)" : "var(--color-text)",
-                    }}>
-                    {f.label}
-                  </button>
-                ))}
-              </div>
-            )}
-
-            {/* Selector de tira (2 o 4 tiras) */}
-            {stripCount > 1 && (
-              <div className="flex gap-1.5 px-4 pt-2 pb-1 flex-wrap">
-                {Array.from({ length: stripCount }).map((_, i) => {
-                  const st = strips[i] || DEFAULT_STRIP;
-                  const dotColor = st.enabled ? st.fixedColor : "#4b5563";
-                  const isSelected = selectedStripId === i;
-                  const label = stripCount === 4
-                    ? ['F-Izq', 'F-Der', 'T-Izq', 'T-Der'][i]
-                    : ['Izq', 'Der'][i];
-                  return (
-                    <button key={i} onClick={() => setSelectedStripId(i)}
-                      className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-all"
-                      style={{
-                        backgroundColor: isSelected ? "color-mix(in srgb,var(--color-primary) 12%,transparent)" : "transparent",
-                        borderColor: isSelected ? "var(--color-primary)" : "var(--color-border)",
-                        color: isSelected ? "var(--color-primary)" : "var(--color-text)",
-                      }}>
-                      <span style={{ width: 8, height: 8, borderRadius: "50%", flexShrink: 0, backgroundColor: dotColor, boxShadow: st.enabled ? `0 0 5px ${dotColor}` : "none", display: "inline-block" }} />
-                      {label}
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-
-            {/* Config de la tira seleccionada */}
-            <div className="px-4 pb-4 pt-2 space-y-3">
-              <div className="flex items-center justify-between py-1">
-                <span className="text-xs font-semibold opacity-60">
-                  {stripCount === 1 ? 'Tira' : stripCount === 4 ? ['F-Izq','F-Der','T-Izq','T-Der'][selectedStripId] : (strip2Face === 'front' ? 'Frente ' : 'Trasera ') + ['Izq','Der'][selectedStripId]}
-                </span>
+              {/* Color */}
+              <div>
+                <p className="text-[11px] opacity-40 mb-1.5">Color</p>
                 <div className="flex items-center gap-2">
-                  <span className="text-xs opacity-40">{strip.enabled ? "Encendida" : "Apagada"}</span>
-                  <ToggleSwitch small enabled={strip.enabled}
-                    onChange={(v) => {
-                      setStrip({ enabled: v, mode: v ? 'fixed' : 'off' });
-                      sendLedCommand(selectedStripId, v ? 'fixed' : 'off', { rgb: v ? hexToRgb(strip.fixedColor) : [0, 0, 0] });
-                    }} />
+                  <input type="color" value={strip.color}
+                    onChange={e => updateStrip({ color: e.target.value })}
+                    disabled={!strip.enabled}
+                    className="w-10 h-8 rounded cursor-pointer p-0.5"
+                    style={{ border: "none", background: "none" }} />
+                  <span className="font-mono text-xs opacity-40 flex-1">{strip.color.toUpperCase()}</span>
+                  <button disabled={!strip.enabled}
+                    onClick={() => sendLedCommand(strip.mode, { rgb: hexToRgb(strip.color) })}
+                    className="px-3 py-1 text-xs rounded-lg text-white disabled:opacity-40"
+                    style={{ backgroundColor: "var(--color-primary)" }}>
+                    Aplicar
+                  </button>
                 </div>
               </div>
 
@@ -566,31 +524,41 @@ const CabinetManagement = ({ cabinets = [], sensors = [] }) => {
                 <p className="text-[11px] opacity-35 mt-1">{MODES.find(m => m.id === strip.mode)?.desc || ""}</p>
               </div>
 
-              {strip.mode === 'fixed' && (
+              {/* Velocidad de parpadeo */}
+              {strip.mode === 'blink' && (
                 <div>
-                  <p className="text-xs opacity-40 mb-1.5">Color</p>
-                  <div className="flex items-center gap-2">
-                    <input type="color" value={strip.fixedColor} onChange={e => setStrip({ fixedColor: e.target.value })} disabled={!strip.enabled} className="w-10 h-8 rounded cursor-pointer p-0.5" style={{ border: "none", background: "none" }} />
-                    <span className="font-mono text-xs opacity-40 flex-1">{strip.fixedColor.toUpperCase()}</span>
-                    <button disabled={!strip.enabled} onClick={() => sendLedCommand(selectedStripId, 'fixed', { rgb: hexToRgb(strip.fixedColor) })} className="px-3 py-1 text-xs rounded-lg text-white disabled:opacity-40" style={{ backgroundColor: "var(--color-primary)" }}>Aplicar</button>
+                  <p className="text-[11px] opacity-40 mb-1.5">Velocidad</p>
+                  <div className="flex gap-1.5">
+                    {BLINK_SPEEDS.map(s => (
+                      <button key={s.id}
+                        onClick={() => {
+                          updateStrip({ blinkSpeed: s.id });
+                          sendLedCommand('blink', { rgb: hexToRgb(strip.color), period_ms: s.period_ms });
+                        }}
+                        className="px-3 py-1 rounded-lg text-xs font-medium border transition-all"
+                        style={{
+                          backgroundColor: strip.blinkSpeed === s.id ? "color-mix(in srgb,var(--color-primary) 12%,transparent)" : "transparent",
+                          borderColor: strip.blinkSpeed === s.id ? "var(--color-primary)" : "var(--color-border)",
+                          color: strip.blinkSpeed === s.id ? "var(--color-primary)" : "var(--color-text)",
+                        }}>
+                        {s.label}
+                      </button>
+                    ))}
                   </div>
                 </div>
               )}
-              {strip.mode === 'door_open' && (
-                <div className="space-y-2">
-                  <p className="text-xs opacity-40 mb-1">Color apertura</p>
-                  <div className="flex items-center gap-2">
-                    <input type="color" value={strip.fixedColor} onChange={e => setStrip({ fixedColor: e.target.value })} disabled={!strip.enabled} className="w-10 h-8 rounded cursor-pointer p-0.5" style={{ border: "none", background: "none" }} />
-                    <span className="font-mono text-xs opacity-40 flex-1">{strip.fixedColor.toUpperCase()}</span>
-                  </div>
-                  <p className="text-xs opacity-40">Solo encender al abrir puerta</p>
-                </div>
-              )}
+
+              {/* Rangos temperatura */}
               {strip.mode === 'auto_temp' && (
                 <div>
-                  <p className="text-xs opacity-40">Automático por temperatura</p>
+                  <p className="text-[11px] opacity-40 mb-1">Rangos de temperatura</p>
                   <div className="mt-1.5 space-y-1">
-                    {[{ label: "< 20°C", color: "#006eff" }, { label: "20–27°C", color: "#00c878" }, { label: "27–30°C", color: "#ffa000" }, { label: ">= 30°C", color: "#ff3c3c" }].map(b => (
+                    {[
+                      { label: "< 20°C",   color: "#006eff" },
+                      { label: "20–27°C",  color: "#00c878" },
+                      { label: "27–30°C",  color: "#ffa000" },
+                      { label: "≥ 30°C",   color: "#ff3c3c" },
+                    ].map(b => (
                       <div key={b.label} className="flex items-center gap-2">
                         <span style={{ width: 10, height: 10, borderRadius: "50%", backgroundColor: b.color, display: "inline-block", flexShrink: 0 }} />
                         <span className="text-xs opacity-50">{b.label}</span>
@@ -599,17 +567,143 @@ const CabinetManagement = ({ cabinets = [], sensors = [] }) => {
                   </div>
                 </div>
               )}
-              {strip.mode === 'alert' && (
-                <div className="space-y-2">
-                  <p className="text-xs opacity-40 mb-1">Color alerta</p>
-                  <div className="flex items-center gap-2">
-                    <input type="color" value={strip.alertColor} onChange={e => setStrip({ alertColor: e.target.value })} disabled={!strip.enabled} className="w-10 h-8 rounded cursor-pointer p-0.5" style={{ border: "none", background: "none" }} />
-                    <span className="font-mono text-xs opacity-40 flex-1">{strip.alertColor.toUpperCase()}</span>
-                  </div>
-                  <p className="text-xs opacity-40">Solo encender en alertas</p>
-                </div>
-              )}
+
             </div>
+          </div>
+
+          {/* LED en alertas */}
+          <div className="rounded-2xl border overflow-hidden" style={{ backgroundColor: "var(--color-card)", borderColor: "var(--color-border)" }}>
+            <div className="flex items-center justify-between px-4 py-3 border-b" style={{ borderColor: "var(--color-border)" }}>
+              <div>
+                <span className="text-sm font-semibold">LED en alertas</span>
+                <p className="text-[11px] opacity-40 mt-0.5">Cambiar tira al activarse una alerta</p>
+              </div>
+              <ToggleSwitch small enabled={alertBindingsEnabled}
+                onChange={(v) => {
+                  setAlertBindingsEnabled(v);
+                  localStorage.setItem('led_alert_bindings_enabled', String(v));
+                }} />
+            </div>
+
+            {alertBindingsEnabled ? (
+              <div className="px-4 pb-4 pt-3 space-y-3">
+
+                {/* Lista de bindings */}
+                {alertBindings.length > 0 && (
+                  <div className="space-y-1.5">
+                    {alertBindings.map((b, idx) => {
+                      const rule      = alertRules.find(r => String(r.id) === String(b.rule_id));
+                      const ruleLabel = rule ? rule.name : (b.rule_id === 'any' ? 'Cualquier alerta' : `Regla #${b.rule_id}`);
+                      const sevColor  = { critical: '#ef4444', high: '#f97316', medium: '#f59e0b', low: '#3b82f6' }[rule?.severity] || '#6b7280';
+                      const modeLabel = { blink: 'Intermitente', fixed: 'Fijo', pulse: 'Pulso' }[b.action_mode] || b.action_mode;
+                      const speedLabel = { slow: 'lento', medium: 'medio', fast: 'rápido' }[b.action_speed] || '';
+                      return (
+                        <div key={idx} className="flex items-center gap-2 px-3 py-2 rounded-xl border"
+                          style={{ borderColor: "var(--color-border)", backgroundColor: "color-mix(in srgb,var(--color-bg) 60%,transparent)" }}>
+                          <span style={{ width: 10, height: 10, borderRadius: "50%", backgroundColor: b.action_color, boxShadow: `0 0 6px ${b.action_color}99`, flexShrink: 0, display: "inline-block" }} />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs font-medium truncate">{ruleLabel}</p>
+                            <p className="text-[11px] opacity-40">{modeLabel}{speedLabel ? ` · ${speedLabel}` : ''}
+                              {rule?.severity && <span className="ml-1.5 px-1 rounded" style={{ backgroundColor: `${sevColor}20`, color: sevColor }}>{rule.severity}</span>}
+                            </p>
+                          </div>
+                          <button onClick={() => setAlertBindings(prev => prev.filter((_, i) => i !== idx))}
+                            className="p-1 rounded-lg opacity-30 hover:opacity-80 transition" style={{ border: "1px solid var(--color-border)" }}>
+                            <FiX size={11} />
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* Formulario nuevo binding */}
+                <div className="rounded-xl border p-3 space-y-2.5" style={{ borderColor: "var(--color-border)", borderStyle: "dashed" }}>
+                  <p className="text-[11px] opacity-40 font-semibold uppercase tracking-wide">Nuevo</p>
+                  <div>
+                    <p className="text-[11px] opacity-40 mb-1">Regla de alerta</p>
+                    <select value={newBinding.rule_id}
+                      onChange={e => setNewBinding(p => ({ ...p, rule_id: e.target.value }))}
+                      className="w-full text-xs px-2.5 py-1.5 rounded-lg"
+                      style={{ backgroundColor: "var(--color-bg)", color: "var(--color-text)", border: "1px solid var(--color-border)" }}>
+                      <option value="">— Seleccionar —</option>
+                      <option value="any">Cualquier alerta</option>
+                      {alertRules.map(r => (
+                        <option key={r.id} value={String(r.id)}>
+                          {r.name} ({r.metric} {r.op} {r.threshold})
+                        </option>
+                      ))}
+                    </select>
+                    {alertRules.length === 0 && (
+                      <p className="text-[11px] opacity-30 mt-1">No hay reglas — créalas en la página de Alertas</p>
+                    )}
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <p className="text-[11px] opacity-40 mb-1">Acción LED</p>
+                      <select value={newBinding.action_mode}
+                        onChange={e => setNewBinding(p => ({ ...p, action_mode: e.target.value }))}
+                        className="w-full text-xs px-2.5 py-1.5 rounded-lg"
+                        style={{ backgroundColor: "var(--color-bg)", color: "var(--color-text)", border: "1px solid var(--color-border)" }}>
+                        <option value="blink">Intermitente</option>
+                        <option value="fixed">Fijo</option>
+                        <option value="pulse">Pulso</option>
+                      </select>
+                    </div>
+                    <div>
+                      <p className="text-[11px] opacity-40 mb-1">Velocidad</p>
+                      <select value={newBinding.action_speed}
+                        onChange={e => setNewBinding(p => ({ ...p, action_speed: e.target.value }))}
+                        disabled={newBinding.action_mode === 'fixed'}
+                        className="w-full text-xs px-2.5 py-1.5 rounded-lg disabled:opacity-40"
+                        style={{ backgroundColor: "var(--color-bg)", color: "var(--color-text)", border: "1px solid var(--color-border)" }}>
+                        <option value="slow">Lento</option>
+                        <option value="medium">Medio</option>
+                        <option value="fast">Rápido</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div>
+                    <p className="text-[11px] opacity-40 mb-1">Color de alerta</p>
+                    <div className="flex items-center gap-2">
+                      <input type="color" value={newBinding.action_color}
+                        onChange={e => setNewBinding(p => ({ ...p, action_color: e.target.value }))}
+                        className="w-10 h-7 rounded cursor-pointer p-0.5"
+                        style={{ border: "none", background: "none" }} />
+                      <span className="font-mono text-xs opacity-40 flex-1">{newBinding.action_color.toUpperCase()}</span>
+                    </div>
+                  </div>
+                  <button
+                    disabled={!newBinding.rule_id}
+                    onClick={() => {
+                      setAlertBindings(prev => [...prev, { ...newBinding, id: String(Date.now()) }]);
+                      setNewBinding({ rule_id: '', action_mode: 'blink', action_color: '#ff0000', action_speed: 'medium' });
+                    }}
+                    className="w-full flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs font-semibold text-white disabled:opacity-40"
+                    style={{ backgroundColor: "var(--color-primary)" }}>
+                    <FiPlus size={11} /> Agregar
+                  </button>
+                </div>
+
+                {/* Guardar en backend */}
+                <button onClick={saveAlertBindingsToBackend}
+                  className="w-full flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-semibold border transition-all"
+                  style={{
+                    borderColor: bindingsSaved ? "#10b981" : "var(--color-primary)",
+                    color: bindingsSaved ? "#10b981" : "var(--color-primary)",
+                    backgroundColor: bindingsSaved ? "color-mix(in srgb,#10b981 10%,transparent)" : "color-mix(in srgb,var(--color-primary) 8%,transparent)",
+                  }}>
+                  {bindingsSaved
+                    ? <><FiCheckCircle size={12} /> Guardado</>
+                    : <><FiCheck size={12} /> Guardar configuración</>}
+                </button>
+
+              </div>
+            ) : (
+              <p className="text-center text-xs opacity-30 py-4">
+                Activa para definir el comportamiento LED durante alertas
+              </p>
+            )}
           </div>
 
           {/* Lista de equipos y sensores */}
@@ -665,7 +759,6 @@ const CabinetManagement = ({ cabinets = [], sensors = [] }) => {
           <div className="p-5 flex gap-4 justify-center overflow-x-auto">
             {(() => {
               const front = getFaceStrips('front');
-              const back  = getFaceStrips('back');
               return (
                 <>
                   <div className="flex flex-col items-center gap-1.5">
@@ -674,8 +767,8 @@ const CabinetManagement = ({ cabinets = [], sensors = [] }) => {
                       uCount={U_COUNT}
                       leftStrip={front.leftStrip}
                       rightStrip={front.rightStrip}
-                      leftSelected={front.leftId === selectedStripId}
-                      rightSelected={front.rightId === selectedStripId}
+                      leftSelected={!!front.leftStrip}
+                      rightSelected={!!front.rightStrip}
                       placedDevices={placedDevices.filter(d => (d.placement.face || 'front') === 'front')}
                     />
                   </div>
@@ -683,10 +776,10 @@ const CabinetManagement = ({ cabinets = [], sensors = [] }) => {
                     <span className="text-xs font-medium opacity-50 tracking-wide uppercase">Trasera</span>
                     <Rack3DBack
                       uCount={U_COUNT}
-                      leftStrip={back.leftStrip}
-                      rightStrip={back.rightStrip}
-                      leftSelected={back.leftId === selectedStripId}
-                      rightSelected={back.rightId === selectedStripId}
+                      leftStrip={null}
+                      rightStrip={null}
+                      leftSelected={false}
+                      rightSelected={false}
                       placedDevices={placedDevices.filter(d => d.placement.face === 'back')}
                     />
                   </div>
@@ -755,9 +848,9 @@ const CabinetManagement = ({ cabinets = [], sensors = [] }) => {
 ============================================================ */
 function RackStrip({ strip, side, selected }) {
   if (!strip) return null;
-  const c    = strip.enabled ? strip.fixedColor : "#2a3040";
+  const c    = strip.enabled ? (strip.color || strip.fixedColor || "#00aaff") : "#2a3040";
   const glow = strip.enabled
-    ? `0 0 6px ${strip.fixedColor}cc, 0 0 18px ${strip.fixedColor}55`
+    ? `0 0 6px ${c}cc, 0 0 18px ${c}55`
     : "none";
   return (
     <div style={{
