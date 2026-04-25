@@ -1,0 +1,21 @@
+{
+  "tft": {
+    "enabled": true,
+    "mode": "sensor_data",
+    "rotation_cw": 0,
+    "rotation_fine": 0,
+    "custom_lines": [
+      "",
+      "",
+      ""
+    ]
+  },
+  "lcd": {
+    "enabled": true,
+    "mode": "sensors_time",
+    "custom_line1": "",
+    "custom_line2": "",
+    "cycle_sensors_s": 5,
+    "cycle_time_s": 3
+  }
+}
