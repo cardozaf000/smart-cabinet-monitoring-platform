@@ -35,6 +35,11 @@ const CHART_TYPES = [
   { value: 'stat-bar',   label: 'Núm. + barra', desc: 'Número con barra de progreso' },
 ];
 
+const PAIR_CHART_TYPES = [
+  { value: 'climate-gauge', label: 'Gauge Clima', desc: 'Medidor circular estilo CMC III' },
+  { value: 'sht31-pair',    label: 'Temp + Hum',  desc: 'Gráficas de área apiladas' },
+];
+
 const QUICK_RANGES = [
   { label: '5m',  kind: 'lastN', unit: 'minutes', value: 5 },
   { label: '15m', kind: 'lastN', unit: 'minutes', value: 15 },
@@ -172,6 +177,26 @@ function ChartPreviewSVG({ type, color, active }) {
           })}
         </svg>
       );
+    case 'climate-gauge':
+      return (
+        <svg viewBox="0 0 60 44" className="w-full h-full">
+          <path d="M 14.4,43.6 A 22,22 0 1,1 45.6,43.6" fill="none" stroke={track} strokeWidth="5" strokeLinecap="round"/>
+          <path d="M 14.4,43.6 A 22,22 0 0,1 40,8.4"   fill="none" stroke={c}     strokeWidth="3.5" strokeLinecap="round"
+            style={{ filter: `drop-shadow(0 0 2px ${c})` }}/>
+          <circle cx="40" cy="8.4" r="3" fill={c} style={{ filter: `drop-shadow(0 0 3px ${c})` }}/>
+          <text x="30" y="31" textAnchor="middle" fontSize="7.5" fontWeight="bold" fill={c} fontFamily="monospace">T+H</text>
+        </svg>
+      );
+    case 'sht31-pair':
+      return (
+        <svg viewBox="0 0 60 40" className="w-full h-full">
+          <polygon points="3,20 3,16 15,10 27,13 39,6 51,9 57,7 57,20" fill={ca}/>
+          <polyline points="3,16 15,10 27,13 39,6 51,9 57,7" fill="none" stroke="#f87171" strokeWidth="1.5" strokeLinejoin="round"/>
+          <line x1="0" y1="21" x2="60" y2="21" stroke={track} strokeWidth="0.5"/>
+          <polygon points="3,40 3,34 15,29 27,32 39,27 51,30 57,28 57,40" fill={`${c}33`}/>
+          <polyline points="3,34 15,29 27,32 39,27 51,30 57,28" fill="none" stroke="#60a5fa" strokeWidth="1.5" strokeLinejoin="round"/>
+        </svg>
+      );
     default: return null;
   }
 }
@@ -181,12 +206,55 @@ function ChartPreviewSVG({ type, color, active }) {
 ------------------------------------------------------- */
 function StepSensor({ sensorOptions, selected, onSelect }) {
   const [search, setSearch] = useState('');
-  const filtered = useMemo(() => {
-    const q = search.toLowerCase();
-    return sensorOptions.filter(s =>
+  const q = search.toLowerCase();
+
+  const individuals = useMemo(() =>
+    sensorOptions.filter(s => !s.isPair && (
       s.name.toLowerCase().includes(q) || s.type.toLowerCase().includes(q) || s.id.includes(q)
+    )),
+    [sensorOptions, q]
+  );
+  const pairs = useMemo(() =>
+    sensorOptions.filter(s => s.isPair && (
+      s.name.toLowerCase().includes(q) || 'clima'.includes(q) || 'sht'.includes(q) || q === ''
+    )),
+    [sensorOptions, q]
+  );
+
+  const SensorCard = ({ s }) => {
+    const active = selected?.id === s.id && selected?.type === s.type;
+    return (
+      <button
+        key={`${s.id}-${s.type}`}
+        onClick={() => onSelect(s)}
+        className="text-left p-3 rounded-xl border transition-all hover:scale-[1.02] focus:outline-none"
+        style={{
+          backgroundColor: active
+            ? 'color-mix(in srgb, var(--color-primary) 15%, var(--color-card))'
+            : s.isPair ? 'color-mix(in srgb, #8b5cf6 6%, var(--color-bg))' : 'var(--color-bg)',
+          borderColor: active ? 'var(--color-primary)' : s.isPair ? '#8b5cf640' : 'var(--color-border)',
+          boxShadow: active ? '0 0 0 2px var(--color-primary)' : 'none',
+        }}
+      >
+        <div className="flex items-center gap-1.5">
+          <span className="font-semibold text-sm leading-tight">{s.name}</span>
+          {s.isPair && (
+            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full"
+              style={{ backgroundColor: '#8b5cf622', color: '#a78bfa', border: '1px solid #8b5cf640' }}>
+              T+H
+            </span>
+          )}
+        </div>
+        <div className="text-xs mt-0.5 capitalize" style={{ color: 'var(--color-text-muted, #9ca3af)' }}>
+          {s.isPair ? `Puerto ${s.puerto} · temp + humedad` : s.type}
+        </div>
+        <div className="text-xs mt-1.5 font-mono font-bold"
+          style={{ color: active ? 'var(--color-primary)' : undefined }}>
+          {s.lectura}
+        </div>
+      </button>
     );
-  }, [sensorOptions, search]);
+  };
 
   return (
     <div className="space-y-3">
@@ -201,33 +269,26 @@ function StepSensor({ sensorOptions, selected, onSelect }) {
       {sensorOptions.length === 0 && (
         <div className="text-center py-10 text-sm" style={{ color: 'var(--color-text-muted, #9ca3af)' }}>No hay sensores activos</div>
       )}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-64 overflow-y-auto pr-1">
-        {filtered.map(s => {
-          const active = selected?.id === s.id && selected?.type === s.type;
-          return (
-            <button
-              key={`${s.id}-${s.type}`}
-              onClick={() => onSelect(s)}
-              className="text-left p-3 rounded-xl border transition-all hover:scale-[1.02] focus:outline-none"
-              style={{
-                backgroundColor: active
-                  ? 'color-mix(in srgb, var(--color-primary) 15%, var(--color-card))'
-                  : 'var(--color-bg)',
-                borderColor: active ? 'var(--color-primary)' : 'var(--color-border)',
-                boxShadow: active ? '0 0 0 2px var(--color-primary)' : 'none',
-              }}
-            >
-              <div className="font-semibold text-sm leading-tight">{s.name}</div>
-              <div className="text-xs mt-0.5 capitalize" style={{ color: 'var(--color-text-muted, #9ca3af)' }}>{s.type}</div>
-              <div
-                className="text-xs mt-1.5 font-mono font-bold"
-                style={{ color: active ? 'var(--color-primary)' : undefined }}
-              >
-                {s.lectura}
-              </div>
-            </button>
-          );
-        })}
+      <div className="max-h-64 overflow-y-auto pr-1 space-y-2">
+        {/* Sensores individuales */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          {individuals.map(s => <SensorCard key={`${s.id}-${s.type}`} s={s} />)}
+        </div>
+        {/* Pares SHT31 */}
+        {pairs.length > 0 && (
+          <>
+            <div className="flex items-center gap-2 pt-1">
+              <div className="flex-1 h-px" style={{ backgroundColor: 'var(--color-border)' }}/>
+              <span className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: '#a78bfa' }}>
+                Combinados SHT31
+              </span>
+              <div className="flex-1 h-px" style={{ backgroundColor: 'var(--color-border)' }}/>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {pairs.map(s => <SensorCard key={s.id} s={s} />)}
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
@@ -237,48 +298,53 @@ function StepSensor({ sensorOptions, selected, onSelect }) {
    Paso 2 — Selección de tipo de gráfico
 ------------------------------------------------------- */
 function StepChart({ selectedSensor, selectedChart, onSelect, colorPrimary }) {
+  const isPair = selectedSensor?.isPair;
+
   const recommendations = useMemo(() => {
-    if (!selectedSensor) return [];
+    if (isPair || !selectedSensor) return [];
     const key = Object.keys(CHART_SUGGESTIONS).find(k =>
       selectedSensor.type.toLowerCase().includes(k)
     );
     return key ? CHART_SUGGESTIONS[key] : [];
-  }, [selectedSensor]);
+  }, [selectedSensor, isPair]);
+
+  const types = isPair ? PAIR_CHART_TYPES : CHART_TYPES;
 
   return (
     <div className="space-y-3">
       <p className="text-sm" style={{ color: 'var(--color-text-muted, #9ca3af)' }}>
         Elige el tipo de gráfico para{' '}
-        <strong style={{ color: 'var(--color-text)' }}>{selectedSensor?.name}</strong>{' '}
-        <span>({selectedSensor?.type})</span>:
+        <strong style={{ color: 'var(--color-text)' }}>{selectedSensor?.name}</strong>
+        {isPair
+          ? <span className="ml-1 text-[11px] px-1.5 py-0.5 rounded-full font-bold" style={{ backgroundColor: '#8b5cf622', color: '#a78bfa' }}>Temp + Hum</span>
+          : <span> ({selectedSensor?.type})</span>}:
       </p>
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        {CHART_TYPES.map(ct => {
-          const active       = selectedChart === ct.value;
-          const recommended  = recommendations.includes(ct.value);
+      <div className={`grid gap-3 ${isPair ? 'grid-cols-2' : 'grid-cols-2 sm:grid-cols-4'}`}>
+        {types.map(ct => {
+          const active      = selectedChart === ct.value;
+          const recommended = recommendations.includes(ct.value);
+          const accentColor = isPair ? '#8b5cf6' : colorPrimary;
           return (
             <button
               key={ct.value}
               onClick={() => onSelect(ct.value)}
               className="relative flex flex-col items-center p-3 rounded-xl border transition-all hover:scale-[1.03] focus:outline-none"
               style={{
-                backgroundColor: active ? 'var(--color-primary)' : 'var(--color-bg)',
-                borderColor: active
-                  ? 'var(--color-primary)'
-                  : recommended
-                  ? colorPrimary + '55'
-                  : 'var(--color-border)',
-                boxShadow: active ? '0 0 0 2px var(--color-primary)' : 'none',
+                backgroundColor: active ? (isPair ? '#7c3aed' : 'var(--color-primary)') : 'var(--color-bg)',
+                borderColor: active ? accentColor : recommended ? accentColor + '55' : 'var(--color-border)',
+                boxShadow: active ? `0 0 0 2px ${accentColor}` : 'none',
                 color: active ? 'white' : 'var(--color-text)',
               }}
             >
               {recommended && !active && (
-                <span className="absolute -top-1.5 -right-1.5 text-[10px] bg-amber-500 text-white px-1.5 py-0.5 rounded-full font-bold leading-none">
-                  ★
-                </span>
+                <span className="absolute -top-1.5 -right-1.5 text-[10px] bg-amber-500 text-white px-1.5 py-0.5 rounded-full font-bold leading-none">★</span>
+              )}
+              {ct.value === 'climate-gauge' && !active && (
+                <span className="absolute -top-1.5 -right-1.5 text-[10px] text-white px-1.5 py-0.5 rounded-full font-bold leading-none"
+                  style={{ backgroundColor: '#7c3aed' }}>★</span>
               )}
               <div className="w-14 h-9 mb-2">
-                <ChartPreviewSVG type={ct.value} color={colorPrimary} active={active} />
+                <ChartPreviewSVG type={ct.value} color={accentColor} active={active} />
               </div>
               <span className="font-semibold text-xs">{ct.label}</span>
               <span className="text-[10px] mt-0.5 text-center leading-tight" style={{ color: 'var(--color-text-muted, #9ca3af)' }}>{ct.desc}</span>
@@ -408,7 +474,7 @@ function StepConfig({ title, setTitle, timeRange, setTimeRange, advanced, setAdv
 /* -------------------------------------------------------
    Wizard principal
 ------------------------------------------------------- */
-export default function AddChartWizard({ sensors, lecturasNormalizadas, onAdd, onCancel }) {
+export default function AddChartWizard({ sensors, lecturasNormalizadas, sensorGroups = [], onAdd, onCancel }) {
   const [step, setStep]                   = useState(1);
   const [selectedSensor, setSelectedSensor] = useState(null);
   const [selectedChart, setSelectedChart]   = useState(null);
@@ -419,32 +485,74 @@ export default function AddChartWizard({ sensors, lecturasNormalizadas, onAdd, o
   const colorPrimary = getComputedStyle(document.documentElement)
     .getPropertyValue('--color-primary').trim() || '#4f8ef7';
 
-  /* Construir opciones de sensor */
+  /* Construir opciones de sensor: individuales + pares SHT31 */
   const sensorOptions = useMemo(() => {
-    return sensors.map(s => {
-      const l = lecturasNormalizadas.find(
-        r => r.sensorId === String(s.id) && r.tipo === (s.type || '')
-      );
+    const individuals = sensors.map(s => {
+      const l = lecturasNormalizadas.find(r => r.sensorId === String(s.id) && r.tipo === (s.type || ''));
       return {
         id:      String(s.id),
         type:    s.type || 'sensor',
         name:    s.name || String(s.id),
         lectura: l ? `${l.valor}${l.unidad ? ' ' + l.unidad : ''}` : '—',
+        isPair:  false,
       };
     });
-  }, [sensors, lecturasNormalizadas]);
+    const pairs = sensorGroups
+      .filter(g => g.kind === 'pair')
+      .map(g => {
+        const tL = lecturasNormalizadas.find(r => r.sensorId === String(g.tSensor.id) && r.tipo === 'temperatura');
+        const hL = lecturasNormalizadas.find(r => r.sensorId === String(g.hSensor.id) && r.tipo === 'humedad');
+        const baseName = (g.tSensor.name || '').replace(/\s*temperatura\s*$/i, '').trim() || `SHT31 P${g.tSensor.puerto}`;
+        return {
+          id:      `pair-${g.tSensor.id}-${g.hSensor.id}`,
+          tempId:  String(g.tSensor.id),
+          humId:   String(g.hSensor.id),
+          type:    'clima',
+          name:    baseName,
+          puerto:  g.tSensor.puerto,
+          lectura: [tL && `${tL.valor}°C`, hL && `${hL.valor}%`].filter(Boolean).join(' / ') || '—',
+          isPair:  true,
+        };
+      });
+    return [...individuals, ...pairs];
+  }, [sensors, lecturasNormalizadas, sensorGroups]);
 
   const handleSelectSensor = (s) => {
     setSelectedSensor(s);
-    setTitle(`${s.name} — ${s.type}`);
-    // Auto-seleccionar gráfico recomendado
-    const key = Object.keys(CHART_SUGGESTIONS).find(k => s.type.toLowerCase().includes(k));
-    const recs = key ? CHART_SUGGESTIONS[key] : [];
-    setSelectedChart(recs[0] || 'line');
+    if (s.isPair) {
+      setTitle(s.name);
+      setSelectedChart('climate-gauge');
+    } else {
+      setTitle(`${s.name} — ${s.type}`);
+      const key = Object.keys(CHART_SUGGESTIONS).find(k => s.type.toLowerCase().includes(k));
+      const recs = key ? CHART_SUGGESTIONS[key] : [];
+      setSelectedChart(recs[0] || 'line');
+    }
   };
 
   const handleCreate = () => {
     if (!selectedSensor || !selectedChart) return;
+    if (selectedSensor.isPair) {
+      if (selectedChart === 'climate-gauge') {
+        onAdd({
+          id: `climate-gauge-${Date.now()}`, type: 'climate-gauge',
+          title: title || selectedSensor.name,
+          sensorName: selectedSensor.name,
+          tempSensorId: selectedSensor.tempId, humSensorId: selectedSensor.humId,
+          colSpan: advanced.colSpan || 2, gh: 6,
+        });
+      } else {
+        onAdd({
+          id: `sht31-pair-${Date.now()}`, type: 'sht31-pair',
+          title: title || selectedSensor.name,
+          sensorName: selectedSensor.name,
+          tempSensorId: selectedSensor.tempId, humSensorId: selectedSensor.humId,
+          measure: 'sht31-pair',
+          timeRange, colSpan: advanced.colSpan || 1,
+        });
+      }
+      return;
+    }
     onAdd({
       id:          `sensor-${Date.now()}`,
       type:        'sensor',

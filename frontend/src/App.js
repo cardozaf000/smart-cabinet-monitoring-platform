@@ -51,6 +51,8 @@ const App = () => {
   const [cabinets, setCabinets] = useState([]);
   const [sensors, setSensors] = useState([]);
   const [lecturas, setLecturas] = useState([]);
+  const [sensorsLoaded, setSensorsLoaded] = useState(false);
+  const sensorsLoadedRef = useRef(false);
 
   // --- Preferencias globales ---
   const [settings, setSettings] = useState({
@@ -132,6 +134,7 @@ const App = () => {
         }
         setSensors(Array.from(map.values()));
         setLecturas(data);
+        if (!sensorsLoadedRef.current) { sensorsLoadedRef.current = true; setSensorsLoaded(true); }
       })
       .catch(() => {});
   }, []);
@@ -182,6 +185,7 @@ const App = () => {
           const sensArr = Array.from(map.values());
           setSensors(sensArr);
           setLecturas(data);
+          if (!sensorsLoadedRef.current) { sensorsLoadedRef.current = true; setSensorsLoaded(true); }
         }
       } catch (err) {
         if (err.name !== "AbortError") console.error("Error al obtener sensores:", err);
@@ -196,6 +200,14 @@ const App = () => {
       clearInterval(intervalId);
     };
   }, [currentPage]);
+
+  // Fallback: si el backend no responde en 60s, marcar como cargado de todas formas
+  useEffect(() => {
+    const t = setTimeout(() => {
+      if (!sensorsLoadedRef.current) { sensorsLoadedRef.current = true; setSensorsLoaded(true); }
+    }, 60000);
+    return () => clearTimeout(t);
+  }, []);
 
   // ==========================================================
   // 🧩 Handlers
@@ -358,6 +370,7 @@ const App = () => {
               <SensorManagement
                 sensors={sensors}
                 lecturas={lecturas}
+                sensorsLoaded={sensorsLoaded}
                 sensorAliases={sensorAliases}
                 onSensorRename={handleSensorRename}
                 onUpdateSensor={handleUpdateSensor}
@@ -398,6 +411,7 @@ const App = () => {
       isMobile,
       sensors,
       lecturas,
+      sensorsLoaded,
       cabinets,
       settings,
       handleUpdateSensor,

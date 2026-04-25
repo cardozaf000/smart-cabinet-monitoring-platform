@@ -159,12 +159,177 @@ function loadItems() {
 
 function getDefaultH(item) {
   if (item.type === 'fixed') return 3;
+  if (item.type === 'climate-gauge') return 6;
   const t = item.chartType;
   if (t === 'stat' || t === 'stat-bg' || t === 'stat-bar' || t === 'stat-spark') return 3;
   if (t === 'gauge')   return 4;
   if (t === 'heatmap') return 5;
   return 4;
 }
+
+/* ============================================================
+   ARC GAUGE — estilo CMC III de Rittal
+============================================================ */
+function polarToCartesian(cx, cy, r, angleDeg) {
+  const rad = ((angleDeg - 90) * Math.PI) / 180;
+  return { x: cx + r * Math.cos(rad), y: cy + r * Math.sin(rad) };
+}
+
+function svgArcPath(cx, cy, r, startDeg, endDeg) {
+  const s    = polarToCartesian(cx, cy, r, startDeg);
+  const e    = polarToCartesian(cx, cy, r, endDeg);
+  const diff = ((endDeg - startDeg) % 360 + 360) % 360;
+  const large = diff > 180 ? 1 : 0;
+  return `M ${s.x.toFixed(2)} ${s.y.toFixed(2)} A ${r} ${r} 0 ${large} 1 ${e.x.toFixed(2)} ${e.y.toFixed(2)}`;
+}
+
+const GAUGE_START = 225;
+const GAUGE_SWEEP = 270;
+
+const TEMP_ZONES = [
+  { from: -10, to: 15,  color: '#60a5fa' },
+  { from: 15,  to: 27,  color: '#22c55e' },
+  { from: 27,  to: 35,  color: '#f59e0b' },
+  { from: 35,  to: 60,  color: '#ef4444' },
+];
+const HUM_ZONES = [
+  { from: 0,  to: 30,  color: '#f59e0b' },
+  { from: 30, to: 70,  color: '#22c55e' },
+  { from: 70, to: 100, color: '#3b82f6' },
+];
+
+const ArcGauge = memo(function ArcGauge({ value, min, max, zones, unit, label }) {
+  const cx = 70, cy = 75, r = 50;
+  const sw = 11;
+
+  const clampedVal = value != null ? Math.min(max, Math.max(min, value)) : null;
+  const pct        = clampedVal != null ? (clampedVal - min) / (max - min) : 0;
+  const valueAngle = GAUGE_START + pct * GAUGE_SWEEP;
+
+  const currentZone = value != null
+    ? (zones.find(z => value >= z.from && value < z.to) ?? zones[zones.length - 1])
+    : null;
+  const statusColor = currentZone?.color ?? 'var(--color-border)';
+
+  const needlePt  = clampedVal != null ? polarToCartesian(cx, cy, r - 3, valueAngle) : null;
+  const startPt   = polarToCartesian(cx, cy, r + 10, GAUGE_START);
+  const endPt     = polarToCartesian(cx, cy, r + 10, GAUGE_START + GAUGE_SWEEP);
+
+  const displayVal = clampedVal != null
+    ? (Math.abs(clampedVal) >= 100 || Number.isInteger(clampedVal)
+        ? Math.round(clampedVal)
+        : clampedVal.toFixed(1))
+    : '—';
+
+  return (
+    <svg viewBox="0 0 140 118" width="100%" height="100%" preserveAspectRatio="xMidYMid meet">
+      {/* Track background — usa color-mix para adaptarse al tema */}
+      <path d={svgArcPath(cx, cy, r, GAUGE_START, GAUGE_START + GAUGE_SWEEP)}
+        fill="none" strokeWidth={sw} strokeLinecap="round"
+        style={{ stroke: 'color-mix(in srgb, var(--color-border) 70%, var(--color-card))' }}/>
+      {/* Zone segments */}
+      {zones.map((zone, i) => {
+        const a1 = GAUGE_START + ((zone.from - min) / (max - min)) * GAUGE_SWEEP;
+        const a2 = GAUGE_START + ((zone.to   - min) / (max - min)) * GAUGE_SWEEP;
+        return (
+          <path key={i} d={svgArcPath(cx, cy, r, a1, a2)}
+            fill="none" stroke={zone.color} strokeWidth={sw} strokeOpacity={0.45}/>
+        );
+      })}
+      {/* Value arc */}
+      {clampedVal != null && pct > 0.005 && (
+        <path d={svgArcPath(cx, cy, r, GAUGE_START, valueAngle)}
+          fill="none" stroke={statusColor} strokeWidth={sw * 0.55} strokeLinecap="round"
+          style={{ filter: `drop-shadow(0 0 4px ${statusColor}88)` }}/>
+      )}
+      {/* Needle dot */}
+      {needlePt && (
+        <circle cx={needlePt.x} cy={needlePt.y} r={sw * 0.68} fill={statusColor}
+          style={{ filter: `drop-shadow(0 0 5px ${statusColor})` }}/>
+      )}
+      {/* Value text */}
+      <text x={cx} y={cy - 3} textAnchor="middle" fontSize={24} fontWeight="bold"
+        fontFamily="'Courier New', monospace"
+        style={{ fill: clampedVal != null ? statusColor : 'var(--color-border)' }}>
+        {displayVal}
+      </text>
+      {/* Unit */}
+      <text x={cx} y={cy + 13} textAnchor="middle" fontSize={12} fontWeight="600"
+        style={{ fill: 'var(--text-color-muted, #9ca3af)' }}>
+        {unit}
+      </text>
+      {/* Label */}
+      <text x={cx} y={cy + 27} textAnchor="middle" fontSize={8} fontWeight="700" letterSpacing="1.5"
+        style={{ fill: 'var(--text-color-muted, #9ca3af)', opacity: 0.7 }}>
+        {label}
+      </text>
+      {/* Min / Max */}
+      <text x={startPt.x} y={startPt.y + 4} textAnchor="middle" fontSize={8}
+        style={{ fill: 'var(--text-color-muted, #9ca3af)', opacity: 0.55 }}>{min}</text>
+      <text x={endPt.x}   y={endPt.y   + 4} textAnchor="middle" fontSize={8}
+        style={{ fill: 'var(--text-color-muted, #9ca3af)', opacity: 0.55 }}>{max}</text>
+    </svg>
+  );
+});
+
+const STATUS_COLORS_CG = ['#22c55e', '#60a5fa', '#f59e0b', '#ef4444'];
+const STATUS_LABELS_CG = ['OK', 'Info', 'Advertencia', 'Crítico'];
+const ZONE_SEVERITY = { '#22c55e': 0, '#60a5fa': 1, '#3b82f6': 1, '#f59e0b': 2, '#ef4444': 3 };
+
+const ClimateGauge = memo(function ClimateGauge({ tempValue, humValue, tempUnit, humUnit, title }) {
+  const tempZone = tempValue != null
+    ? (TEMP_ZONES.find(z => tempValue >= z.from && tempValue < z.to) ?? TEMP_ZONES[TEMP_ZONES.length - 1])
+    : null;
+  const humZone = humValue != null
+    ? (HUM_ZONES.find(z => humValue >= z.from && humValue < z.to) ?? HUM_ZONES[HUM_ZONES.length - 1])
+    : null;
+
+  const sev = Math.max(
+    tempZone ? (ZONE_SEVERITY[tempZone.color] ?? 0) : -1,
+    humZone  ? (ZONE_SEVERITY[humZone.color]  ?? 0) : -1,
+  );
+
+  return (
+    <div style={{
+      width: '100%', height: '100%', display: 'flex', flexDirection: 'column',
+      backgroundColor: 'var(--color-card)',
+      overflow: 'hidden',
+    }}>
+      {/* Status strip */}
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        padding: '4px 10px 3px', flexShrink: 0,
+        borderBottom: '1px solid var(--color-border)',
+      }}>
+        <span style={{ fontSize: 10, color: 'var(--text-color-muted, #9ca3af)', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+          {title || 'Clima'}
+        </span>
+        {sev >= 0 && (
+          <span style={{
+            fontSize: 9, fontWeight: 700, padding: '1px 7px', borderRadius: 4,
+            backgroundColor: `${STATUS_COLORS_CG[sev]}18`, color: STATUS_COLORS_CG[sev],
+            border: `1px solid ${STATUS_COLORS_CG[sev]}44`,
+          }}>
+            {STATUS_LABELS_CG[sev]}
+          </span>
+        )}
+      </div>
+
+      {/* Gauges row */}
+      <div style={{ flex: 1, display: 'flex', minHeight: 0, padding: '2px 2px 4px' }}>
+        <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center' }}>
+          <ArcGauge value={tempValue} min={-10} max={60}
+            zones={TEMP_ZONES} unit={tempUnit || '°C'} label="TEMPERATURA"/>
+        </div>
+        <div style={{ width: 1, alignSelf: 'stretch', backgroundColor: 'var(--color-border)', margin: '6px 0', flexShrink: 0 }}/>
+        <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center' }}>
+          <ArcGauge value={humValue} min={0} max={100}
+            zones={HUM_ZONES} unit={humUnit || '%'} label="HUMEDAD"/>
+        </div>
+      </div>
+    </div>
+  );
+});
 
 /* ============================================================
    SUB-COMPONENTES MEMOIZADOS
@@ -253,7 +418,8 @@ function PanelFullscreen({ item, config, data, reading, onClose }) {
 const PanelItem = memo(function PanelItem({
   item, config, data, editMode, onRemove, onFullscreen, panelPxH, reading, displayName, onRename,
 }) {
-  const isFixed    = item.type === 'fixed' || FIXED_IDS.has(item.id);
+  const isFixed        = item.type === 'fixed' || FIXED_IDS.has(item.id);
+  const isClimateGauge = item.type === 'climate-gauge';
   const showHeader = !editMode && panelPxH >= 46;
   const showFooter = !editMode && panelPxH >= 78;
   const label = displayName || item.sensorName || item.title;
@@ -357,8 +523,28 @@ const PanelItem = memo(function PanelItem({
         </>
       )}
 
+      {/* ---- Contenido CLIMATE GAUGE ---- */}
+      {!isFixed && isClimateGauge && (
+        <>
+          <div style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
+            <ClimateGauge
+              tempValue={reading?.temp?.valor ?? null}
+              humValue={reading?.hum?.valor   ?? null}
+              tempUnit={reading?.temp?.unidad || '°C'}
+              humUnit={reading?.hum?.unidad   || '%'}
+              title={label}
+            />
+          </div>
+          {!editMode && (
+            <button onClick={() => onRemove(item.id)}
+              className="opacity-0 group-hover:opacity-100 absolute top-1 right-1 w-4 h-4 rounded-full flex items-center justify-center text-[9px] text-white bg-red-600 hover:bg-red-700"
+              style={{ transition: 'opacity 0.15s' }} title="Eliminar">✕</button>
+          )}
+        </>
+      )}
+
       {/* ---- Contenido DINÁMICO (sensor único) ---- */}
-      {!isFixed && !isPair && (
+      {!isFixed && !isPair && !isClimateGauge && (
         <>
           {showHeader && (
             <div className="flex items-center gap-1.5 px-2 pt-1.5 pb-0.5 flex-shrink-0">
@@ -442,7 +628,7 @@ const PanelItem = memo(function PanelItem({
 /* ============================================================
    COMPONENTE PRINCIPAL
 ============================================================ */
-const SensorManagement = ({ sensors = [], lecturas = [], sensorAliases = {}, onSensorRename }) => {
+const SensorManagement = ({ sensors = [], lecturas = [], sensorsLoaded = true, sensorAliases = {}, onSensorRename }) => {
 
   const [displayItems, setDisplayItems] = useState(loadItems); // se sobreescribe con datos del backend
   const widgetsSyncedRef = useRef(false); // evitar sync antes de que carguen del backend
@@ -653,7 +839,7 @@ const SensorManagement = ({ sensors = [], lecturas = [], sensorAliases = {}, onS
     const chartItems = [];
     for (const i of displayItems) {
       if (FIXED_IDS.has(i.id)) continue;
-      if (i.type === 'sht31-pair') {
+      if (i.type === 'sht31-pair' || i.type === 'climate-gauge') {
         const tr = globalRange || i.timeRange || { kind: 'lastN', unit: 'hours', value: 24 };
         if (i.tempSensorId) chartItems.push({ sensorId: i.tempSensorId, measure: 'temperatura', timeRange: tr });
         if (i.humSensorId)  chartItems.push({ sensorId: i.humSensorId,  measure: 'humedad',     timeRange: tr });
@@ -736,7 +922,7 @@ const SensorManagement = ({ sensors = [], lecturas = [], sensorAliases = {}, onS
   const visibleDisplayItems = useMemo(() => {
     return displayItems.filter(item => {
       if (FIXED_IDS.has(item.id)) return true;
-      if (item.type === 'sht31-pair') {
+      if (item.type === 'sht31-pair' || item.type === 'climate-gauge') {
         return ultimaPorIdTipo.has(`${item.tempSensorId}__temperatura`) ||
                ultimaPorIdTipo.has(`${item.humSensorId}__humedad`);
       }
@@ -845,6 +1031,23 @@ const SensorManagement = ({ sensors = [], lecturas = [], sensorAliases = {}, onS
       measure: 'sht31-pair',
       timeRange: { kind: 'lastN', unit: 'hours', value: 2 },
       colSpan: 1,
+    }]);
+  }, [displayItems]);
+
+  const handleQuickAddClimateGauge = useCallback((group) => {
+    const tid = String(group.tSensor.id);
+    const hid = String(group.hSensor.id);
+    const exists = displayItems.some(d => d.type === 'climate-gauge' && d.tempSensorId === tid);
+    if (exists) {
+      setDisplayItems(prev => prev.filter(d => !(d.type === 'climate-gauge' && d.tempSensorId === tid)));
+      return;
+    }
+    setDisplayItems(prev => [...prev, {
+      id: `climate-gauge-${Date.now()}`, type: 'climate-gauge',
+      title: `SHT31 Puerto ${group.tSensor.puerto}`,
+      sensorName: `SHT31 P${group.tSensor.puerto}`,
+      tempSensorId: tid, humSensorId: hid,
+      colSpan: 2, gh: 6,
     }]);
   }, [displayItems]);
 
@@ -1155,7 +1358,7 @@ const SensorManagement = ({ sensors = [], lecturas = [], sensorAliases = {}, onS
               const lItem    = gridLayout.find(l => l.i === item.id);
               const panelPxH = (lItem?.h ?? getDefaultH(item)) * ROW_H;
               const reading = FIXED_IDS.has(item.id) ? null
-                : item.type === 'sht31-pair'
+                : (item.type === 'sht31-pair' || item.type === 'climate-gauge')
                   ? {
                       temp: ultimaPorIdTipo.get(`${item.tempSensorId}__temperatura`) || null,
                       hum:  ultimaPorIdTipo.get(`${item.humSensorId}__humedad`)     || null,
@@ -1402,7 +1605,7 @@ const SensorManagement = ({ sensors = [], lecturas = [], sensorAliases = {}, onS
               {sortedGroupedActive.length === 0 && (
                 <tr>
                   <td colSpan={6} className="py-10 text-center text-sm opacity-35">
-                    No hay sensores activos
+                    {sensorsLoaded ? 'No hay sensores activos' : 'Conectando con el sistema…'}
                   </td>
                 </tr>
               )}
@@ -1416,6 +1619,7 @@ const SensorManagement = ({ sensors = [], lecturas = [], sensorAliases = {}, onS
         <AddChartWizard
           sensors={activeSensors}
           lecturasNormalizadas={lecturasNormalizadas}
+          sensorGroups={groupedActive}
           onAdd={handleAddWidget}
           onCancel={() => setShowWizard(false)}
         />
