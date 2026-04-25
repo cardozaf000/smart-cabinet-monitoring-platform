@@ -649,7 +649,18 @@ const SensorManagement = ({ sensors = [], lecturas = [], sensorAliases = {}, onS
     const MS = { minutes: 60_000, hours: 3_600_000, days: 86_400_000 };
     const pad = (n) => String(n).padStart(2, '0');
     const toISOLocal = (d) => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
-    const chartItems = displayItems.filter(i => !FIXED_IDS.has(i.id) && i.sensorId && i.measure);
+    // Expand sht31-pair items into individual temperatura + humedad fetch requests
+    const chartItems = [];
+    for (const i of displayItems) {
+      if (FIXED_IDS.has(i.id)) continue;
+      if (i.type === 'sht31-pair') {
+        const tr = globalRange || i.timeRange || { kind: 'lastN', unit: 'hours', value: 24 };
+        if (i.tempSensorId) chartItems.push({ sensorId: i.tempSensorId, measure: 'temperatura', timeRange: tr });
+        if (i.humSensorId)  chartItems.push({ sensorId: i.humSensorId,  measure: 'humedad',     timeRange: tr });
+      } else if (i.sensorId && i.measure) {
+        chartItems.push(i);
+      }
+    }
     if (chartItems.length === 0) return;
 
     const controller = new AbortController();
@@ -721,30 +732,53 @@ const SensorManagement = ({ sensors = [], lecturas = [], sensorAliases = {}, onS
     return 'Personalizado';
   }, [globalRange]);
 
-  const gridLayout = useMemo(() =>
-    displayItems.map((item, idx) => ({
+  // Solo mostrar paneles cuyo sensor tiene datos activos (igual que la tabla de sensores)
+  const visibleDisplayItems = useMemo(() => {
+    return displayItems.filter(item => {
+      if (FIXED_IDS.has(item.id)) return true;
+      if (item.type === 'sht31-pair') {
+        return ultimaPorIdTipo.has(`${item.tempSensorId}__temperatura`) ||
+               ultimaPorIdTipo.has(`${item.humSensorId}__humedad`);
+      }
+      return ultimaPorIdTipo.has(`${item.sensorId}__${item.measure}`);
+    });
+  }, [displayItems, ultimaPorIdTipo]);
+
+  const gridLayout = useMemo(() => {
+    // Acumula altura máxima por fila para calcular y sin huecos
+    const rowMaxH = [];
+    visibleDisplayItems.forEach((item, idx) => {
+      const row = Math.floor(idx / 3);
+      const h = item.gh ?? getDefaultH(item);
+      rowMaxH[row] = Math.max(rowMaxH[row] ?? 0, h);
+    });
+    const rowStartY = rowMaxH.reduce((acc, _, i) => {
+      acc.push(i === 0 ? 0 : acc[i - 1] + rowMaxH[i - 1]);
+      return acc;
+    }, []);
+
+    return visibleDisplayItems.map((item, idx) => ({
       i:      item.id,
       x:      item.gx ?? (idx % 3) * 4,
-      y:      item.gy ?? Math.floor(idx / 3) * getDefaultH(item),
+      y:      item.gy ?? (rowStartY[Math.floor(idx / 3)] ?? 0),
       w:      item.gw ?? (item.colSpan === 3 ? 12 : item.colSpan === 2 ? 8 : 4),
       h:      item.gh ?? getDefaultH(item),
       minW:   1,
       minH:   item.chartType === 'heatmap' ? 2 : 1,
       static: !editMode,
-    })),
-    [displayItems, editMode]
-  );
+    }));
+  }, [visibleDisplayItems, editMode]);
 
   const mobileLayout = useMemo(() =>
-    displayItems.map((item, idx) => {
+    visibleDisplayItems.map((item, idx) => {
       const h = item.gh ?? getDefaultH(item);
       return { i: item.id, x: 0, y: idx * h, w: 2, h, minW: 1, minH: 1, static: true };
     }),
-    [displayItems]
+    [visibleDisplayItems]
   );
 
-  const dynamicCount = useMemo(() => displayItems.filter(i => i.type !== 'fixed').length, [displayItems]);
-  const totalPanels  = displayItems.length;
+  const dynamicCount = useMemo(() => visibleDisplayItems.filter(i => i.type !== 'fixed').length, [visibleDisplayItems]);
+  const totalPanels  = visibleDisplayItems.length;
 
   const activeSensors = useMemo(() => sensors.filter(s => {
     const reading = ultimaPorIdTipo.get(`${String(s.id)}__${String(s.type ?? '')}`);
@@ -1117,7 +1151,7 @@ const SensorManagement = ({ sensors = [], lecturas = [], sensorAliases = {}, onS
             containerPadding={[0, 0]}
             draggableHandle=".drag-handle"
           >
-            {displayItems.map((item) => {
+            {visibleDisplayItems.map((item) => {
               const lItem    = gridLayout.find(l => l.i === item.id);
               const panelPxH = (lItem?.h ?? getDefaultH(item)) * ROW_H;
               const reading = FIXED_IDS.has(item.id) ? null
@@ -1380,7 +1414,7 @@ const SensorManagement = ({ sensors = [], lecturas = [], sensorAliases = {}, onS
       {/* Wizard */}
       {showWizard && (
         <AddChartWizard
-          sensors={sensors}
+          sensors={activeSensors}
           lecturasNormalizadas={lecturasNormalizadas}
           onAdd={handleAddWidget}
           onCancel={() => setShowWizard(false)}

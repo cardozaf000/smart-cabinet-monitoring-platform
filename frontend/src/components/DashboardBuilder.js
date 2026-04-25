@@ -95,7 +95,7 @@ export default function DashboardBuilder({ lecturas = [] }) {
   // ---- Guardar widget ----
   const handleSave = (cfg) => {
     const token = localStorage.getItem("auth_token");
-    fetch(`${BACKEND}api/widgets`, {
+    fetch(`${BACKEND}/api/widgets`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
       body: JSON.stringify(cfg),
@@ -114,7 +114,7 @@ export default function DashboardBuilder({ lecturas = [] }) {
   // ---- Eliminar widget ----
   const handleDelete = (id) => {
     const token = localStorage.getItem("auth_token");
-    fetch(`${BACKEND}api/widgets/${id}`, {
+    fetch(`${BACKEND}/api/widgets/${id}`, {
       method: "DELETE", headers: { Authorization: "Bearer " + token },
     })
       .then(() => setWidgets(prev => prev.filter(w => w.id !== id)))
