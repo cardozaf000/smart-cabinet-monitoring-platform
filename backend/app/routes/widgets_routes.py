@@ -47,9 +47,9 @@ def get_widgets():
     cur = conn.cursor(dictionary=True)
     try:
         if pinned_only:
-            cur.execute("SELECT * FROM dashboard_widgets WHERE pinned = 1")
+            cur.execute("SELECT * FROM dashboard_widgets WHERE pinned = 1 ORDER BY id ASC")
         else:
-            cur.execute("SELECT * FROM dashboard_widgets")
+            cur.execute("SELECT * FROM dashboard_widgets ORDER BY id ASC")
         widgets = cur.fetchall()
         for w in widgets:
             try:

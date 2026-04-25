@@ -101,12 +101,10 @@ export default function DashboardBuilder({ lecturas = [] }) {
       body: JSON.stringify(cfg),
     })
       .then(res => res.json())
-      .then(() => {
-        setWidgets(prev => {
-          const i = prev.findIndex(w => w.id === cfg.id);
-          if (i === -1) return [...prev, cfg];
-          const cp = [...prev]; cp[i] = cfg; return cp;
-        });
+      .then(() => fetch(`${BACKEND}/api/widgets`, { headers: { Authorization: "Bearer " + token } }))
+      .then(res => res.json())
+      .then(data => {
+        setWidgets(Array.isArray(data) ? data : []);
         setShowModal(false);
         setEditing(null);
       })

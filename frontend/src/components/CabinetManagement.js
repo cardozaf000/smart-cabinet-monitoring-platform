@@ -938,6 +938,33 @@ const CabinetManagement = ({ cabinets = [], sensors = [], sensorAliases = {}, on
    HELPERS COMPARTIDOS PARA RACKS
 ============================================================ */
 function RackStrip({ strip, side, selected }) {
+  const [animOpacity, setAnimOpacity] = useState(1);
+
+  useEffect(() => {
+    if (!strip?.enabled || strip.mode === 'fixed' || strip.mode === 'off' || strip.mode === 'auto_temp') {
+      setAnimOpacity(1);
+      return;
+    }
+    if (strip.mode === 'blink' || strip.mode === 'door_open') {
+      const ms = { slow: 1000, medium: 500, fast: 200 }[strip.blinkSpeed] || 500;
+      let on = true;
+      const id = setInterval(() => { on = !on; setAnimOpacity(on ? 1 : 0.05); }, ms / 2);
+      return () => clearInterval(id);
+    }
+    if (strip.mode === 'pulse') {
+      let raf;
+      let t = 0;
+      const tick = () => {
+        t += 0.04;
+        setAnimOpacity(0.12 + 0.88 * (Math.sin(t) * 0.5 + 0.5));
+        raf = requestAnimationFrame(tick);
+      };
+      raf = requestAnimationFrame(tick);
+      return () => cancelAnimationFrame(raf);
+    }
+    setAnimOpacity(1);
+  }, [strip?.mode, strip?.enabled, strip?.blinkSpeed]);
+
   if (!strip) return null;
   const c    = strip.enabled ? (strip.color || strip.fixedColor || "#00aaff") : "#2a3040";
   const glow = strip.enabled
@@ -950,8 +977,8 @@ function RackStrip({ strip, side, selected }) {
       top: "4%", bottom: "4%", width: selected ? 6 : 4,
       background: `linear-gradient(to bottom, ${c}00 0%, ${c} 8%, ${c} 92%, ${c}00 100%)`,
       boxShadow: selected ? `${glow}, 0 0 0 1px rgba(255,255,255,0.35)` : glow,
-      opacity: strip.enabled ? 1 : 0.25,
-      transition: "all 0.3s ease",
+      opacity: strip.enabled ? animOpacity : 0.25,
+      transition: strip.mode === 'blink' || strip.mode === 'door_open' ? "none" : "opacity 0.08s ease",
       borderRadius: 3,
     }} />
   );

@@ -10,7 +10,7 @@ DEFAULT_CONFIG = {
     "tft": {
         "enabled": True,
         "mode": "sensor_data",
-        "rotation_cw": 90,
+        "rotation_cw": 0,
         "rotation_fine": 0,
         "custom_lines": ["", "", ""],
     },

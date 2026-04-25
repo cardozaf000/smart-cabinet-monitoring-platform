@@ -116,6 +116,26 @@ const App = () => {
     return () => document.removeEventListener("visibilitychange", onVisibility);
   }, []);
 
+  // Fetch inicial de sensores al autenticarse (pre-carga antes de navegar)
+  useEffect(() => {
+    if (!isAuthenticated()) return;
+    fetch(`${BACKEND}/datos_sensores`)
+      .then(r => r.ok ? r.json() : [])
+      .then(data => {
+        if (!Array.isArray(data)) return;
+        const map = new Map();
+        for (const item of data) {
+          const key = `${item.sensor_id}-${item.tipo}`;
+          const ts = new Date(item?.lectura?.timestamp || 0).getTime();
+          if (!map.has(key) || ts > new Date(map.get(key)?.lectura?.timestamp || 0).getTime())
+            map.set(key, { id: item.sensor_id, name: item.nombre, type: item.tipo, pin: item.pin ?? null, puerto: item.puerto ?? null, cabinetId: item.cabinetId ?? "cab-desconocido", status: item.status ?? "OK", lectura: { valor: item?.lectura?.valor ?? null, unidad: item?.lectura?.unidad ?? "", timestamp: item?.lectura?.timestamp ?? null } });
+        }
+        setSensors(Array.from(map.values()));
+        setLecturas(data);
+      })
+      .catch(() => {});
+  }, []);
+
   // ==========================================================
   // 🔁 Polling de sensores
   // ==========================================================

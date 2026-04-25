@@ -9,7 +9,7 @@ import AddChartWizard from './AddChartWizard';
 import SensorDashboard from './SensorDashboard';
 import {
   FiClock, FiRefreshCcw, FiEdit2, FiMenu, FiMaximize2, FiMinimize2, FiBarChart2,
-  FiAlertTriangle, FiCheckCircle, FiCpu,
+  FiAlertTriangle, FiCheckCircle, FiCpu, FiArrowUp, FiArrowDown,
 } from 'react-icons/fi';
 import { BACKEND } from '../utils/api';
 import { authHeader } from '../utils/auth';
@@ -77,6 +77,34 @@ function relativeTime(ts) {
   if (diff < 3600)  return `${Math.round(diff / 60)} min`;
   if (diff < 86400) return `${Math.round(diff / 3600)}h`;
   return `${Math.round(diff / 86400)}d`;
+}
+
+// Agrupa sensores temperatura+humedad del mismo puerto en pares (un SHT31 físico)
+function groupSensors(sensors) {
+  const result = [];
+  const used = new Set();
+  for (const s of sensors) {
+    const skey = `${s.id}::${s.type}`;
+    if (used.has(skey)) continue;
+    if ((s.type === 'temperatura' || s.type === 'humedad') && s.puerto != null) {
+      const counterType = s.type === 'temperatura' ? 'humedad' : 'temperatura';
+      const partner = sensors.find(o => {
+        const okey = `${o.id}::${o.type}`;
+        return !used.has(okey) && okey !== skey && o.puerto === s.puerto && o.type === counterType;
+      });
+      if (partner) {
+        const tS = s.type === 'temperatura' ? s : partner;
+        const hS = s.type === 'humedad'     ? s : partner;
+        result.push({ kind: 'pair', tSensor: tS, hSensor: hS });
+        used.add(`${tS.id}::${tS.type}`);
+        used.add(`${hS.id}::${hS.type}`);
+        continue;
+      }
+    }
+    result.push({ kind: 'single', sensor: s });
+    used.add(skey);
+  }
+  return result;
 }
 
 // Normaliza lecturas crudas del backend/poll
@@ -229,6 +257,10 @@ const PanelItem = memo(function PanelItem({
   const showHeader = !editMode && panelPxH >= 46;
   const showFooter = !editMode && panelPxH >= 78;
   const label = displayName || item.sensorName || item.title;
+  const isPair = item.type === 'sht31-pair';
+  const pairTR = config?.timeRange || item.timeRange || { kind: 'lastN', unit: 'hours', value: 2 };
+  const tempCfg = isPair ? { chartType: 'area', sensorId: item.tempSensorId, measure: 'temperatura', timeRange: pairTR, decimals: 1, unitOverride: '°C' } : null;
+  const humCfg  = isPair ? { chartType: 'area', sensorId: item.humSensorId,  measure: 'humedad',     timeRange: pairTR, decimals: 1, unitOverride: '%'  } : null;
 
   return (
     <div
@@ -283,8 +315,50 @@ const PanelItem = memo(function PanelItem({
         </div>
       )}
 
-      {/* ---- Contenido DINÁMICO ---- */}
-      {!isFixed && (
+      {/* ---- Contenido SHT31 PAIR (temperatura + humedad apilados) ---- */}
+      {!isFixed && isPair && (
+        <>
+          {showHeader && (
+            <div className="flex items-center gap-1.5 px-2 pt-1.5 pb-0.5 flex-shrink-0">
+              <span className="text-[11px] font-semibold truncate" style={{ color: 'var(--color-text)' }}>{label}</span>
+              <span className="inline-flex items-center text-[11px] font-semibold px-2 py-0.5 rounded-full"
+                style={{ backgroundColor: '#ef444420', color: '#f87171', border: '1px solid #ef444440' }}>T+H</span>
+              <div className="ml-auto flex items-center gap-1 shrink-0">
+                <button onClick={() => onRemove(item.id)}
+                  className="opacity-0 group-hover:opacity-100 w-4 h-4 rounded-full flex items-center justify-center text-[9px] text-white bg-red-600 hover:bg-red-700"
+                  style={{ transition: 'opacity 0.15s' }} title="Eliminar">✕</button>
+              </div>
+            </div>
+          )}
+          {/* Temperatura */}
+          <div style={{ flex: 1, minHeight: 0, overflow: 'hidden', padding: '1px 4px', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ fontSize: 9, color: '#f87171', fontWeight: 700, padding: '1px 2px', lineHeight: 1.5, flexShrink: 0 }}>
+              TEMP{reading?.temp ? ` · ${reading.temp.valor}${reading.temp.unidad || ' °C'}` : ''}
+            </div>
+            <div style={{ flex: 1, minHeight: 0 }}>
+              <ChartRenderer config={tempCfg} data={data} />
+            </div>
+          </div>
+          <div style={{ height: 1, backgroundColor: 'var(--color-border)', margin: '0 4px', flexShrink: 0 }} />
+          {/* Humedad */}
+          <div style={{ flex: 1, minHeight: 0, overflow: 'hidden', padding: '1px 4px', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ fontSize: 9, color: '#60a5fa', fontWeight: 700, padding: '1px 2px', lineHeight: 1.5, flexShrink: 0 }}>
+              HUM{reading?.hum ? ` · ${reading.hum.valor}${reading.hum.unidad || ' %'}` : ''}
+            </div>
+            <div style={{ flex: 1, minHeight: 0 }}>
+              <ChartRenderer config={humCfg} data={data} />
+            </div>
+          </div>
+          {!showHeader && !editMode && (
+            <button onClick={() => onRemove(item.id)}
+              className="opacity-0 group-hover:opacity-100 absolute top-1 right-1 w-4 h-4 rounded-full flex items-center justify-center text-[9px] text-white bg-red-600 hover:bg-red-700"
+              style={{ transition: 'opacity 0.15s' }} title="Eliminar">✕</button>
+          )}
+        </>
+      )}
+
+      {/* ---- Contenido DINÁMICO (sensor único) ---- */}
+      {!isFixed && !isPair && (
         <>
           {showHeader && (
             <div className="flex items-center gap-1.5 px-2 pt-1.5 pb-0.5 flex-shrink-0">
@@ -377,6 +451,7 @@ const SensorManagement = ({ sensors = [], lecturas = [], sensorAliases = {}, onS
   const [dashboardSensor,  setDashboardSensor]  = useState(null); // sensor dashboard completo
   const [fullscreenItem,   setFullscreenItem]   = useState(null); // panel individual fullscreen
   const [showWizard,   setShowWizard]   = useState(false);
+  const [portSort,     setPortSort]     = useState('none'); // 'none' | 'asc' | 'desc'
 
   /* ---- Renombrar sensor ---- */
   const [renameTarget, setRenameTarget] = useState(null); // {sensorId, defaultName}
@@ -676,6 +751,14 @@ const SensorManagement = ({ sensors = [], lecturas = [], sensorAliases = {}, onS
     return reading?.timestamp && (Date.now() - new Date(reading.timestamp).getTime()) < 5 * 60 * 1000;
   }), [sensors, ultimaPorIdTipo]);
 
+  const groupedActive = useMemo(() => groupSensors(activeSensors), [activeSensors]);
+
+  const sortedGroupedActive = useMemo(() => {
+    if (portSort === 'none') return groupedActive;
+    const getPuerto = (g) => g.kind === 'pair' ? (g.tSensor.puerto ?? Infinity) : (g.sensor.puerto ?? Infinity);
+    return [...groupedActive].sort((a, b) => portSort === 'asc' ? getPuerto(a) - getPuerto(b) : getPuerto(b) - getPuerto(a));
+  }, [groupedActive, portSort]);
+
   /* ---- Handlers memoizados ---- */
   const handleAddWidget     = useCallback((w)  => { setDisplayItems(prev => [...prev, w]); setShowWizard(false); }, []);
   const handleRemoveWidget  = useCallback((id) => setDisplayItems(prev => prev.filter(i => i.id !== id)), []);
@@ -709,6 +792,25 @@ const SensorManagement = ({ sensors = [], lecturas = [], sensorAliases = {}, onS
       chartType, measure: sensor.type, sensorScope: 'bySensor', sensorId: sid,
       agg: 'none', timeRange: { kind: 'lastN', unit: 'hours', value: 2 },
       maxPoints: 200, decimals: 2, unitOverride: '', pinned: true, colSpan: 1,
+    }]);
+  }, [displayItems]);
+
+  const handleQuickAddPair = useCallback((group) => {
+    const tid = String(group.tSensor.id);
+    const hid = String(group.hSensor.id);
+    const exists = displayItems.some(d => d.type === 'sht31-pair' && d.tempSensorId === tid);
+    if (exists) {
+      setDisplayItems(prev => prev.filter(d => !(d.type === 'sht31-pair' && d.tempSensorId === tid)));
+      return;
+    }
+    setDisplayItems(prev => [...prev, {
+      id: `sht31-pair-${Date.now()}`, type: 'sht31-pair',
+      title: `SHT31 Puerto ${group.tSensor.puerto}`,
+      sensorName: `SHT31 P${group.tSensor.puerto}`,
+      tempSensorId: tid, humSensorId: hid,
+      measure: 'sht31-pair',
+      timeRange: { kind: 'lastN', unit: 'hours', value: 2 },
+      colSpan: 1,
     }]);
   }, [displayItems]);
 
@@ -1018,8 +1120,13 @@ const SensorManagement = ({ sensors = [], lecturas = [], sensorAliases = {}, onS
             {displayItems.map((item) => {
               const lItem    = gridLayout.find(l => l.i === item.id);
               const panelPxH = (lItem?.h ?? getDefaultH(item)) * ROW_H;
-              const reading  = FIXED_IDS.has(item.id) ? null
-                : ultimaPorIdTipo.get(`${item.sensorId}__${item.measure}`) || null;
+              const reading = FIXED_IDS.has(item.id) ? null
+                : item.type === 'sht31-pair'
+                  ? {
+                      temp: ultimaPorIdTipo.get(`${item.tempSensorId}__temperatura`) || null,
+                      hum:  ultimaPorIdTipo.get(`${item.humSensorId}__humedad`)     || null,
+                    }
+                  : (ultimaPorIdTipo.get(`${item.sensorId}__${item.measure}`) || null);
 
               return (
                 <div key={item.id} style={{ height: '100%' }}>
@@ -1070,35 +1177,131 @@ const SensorManagement = ({ sensors = [], lecturas = [], sensorAliases = {}, onS
                 <th className="py-2.5 px-4 text-left font-semibold opacity-55">Estado</th>
                 <th className="py-2.5 px-4 text-left font-semibold opacity-55">Nombre</th>
                 <th className="py-2.5 px-4 text-left font-semibold opacity-55">Tipo</th>
-                <th className="py-2.5 px-4 text-left font-semibold opacity-55 hidden md:table-cell">Puerto</th>
+                <th className="py-2.5 px-4 text-left font-semibold opacity-55 hidden md:table-cell">
+                  <button
+                    onClick={() => setPortSort(s => s === 'none' ? 'asc' : s === 'asc' ? 'desc' : 'none')}
+                    className="flex items-center gap-1 hover:opacity-100 transition-opacity"
+                    style={{ opacity: portSort !== 'none' ? 1 : 0.55 }}
+                    title="Ordenar por puerto"
+                  >
+                    Puerto
+                    {portSort === 'asc'  && <FiArrowUp size={11}/>}
+                    {portSort === 'desc' && <FiArrowDown size={11}/>}
+                    {portSort === 'none' && <span style={{ opacity: 0.4, fontSize: 10 }}>↕</span>}
+                  </button>
+                </th>
                 <th className="py-2.5 px-4 text-left font-semibold opacity-55">Última lectura</th>
                 <th className="py-2.5 px-4 text-center font-semibold opacity-55">Estadísticas</th>
               </tr>
             </thead>
             <tbody>
-              {activeSensors.map((sensor, i) => {
-                const sid   = String(sensor.id);
-                const stype = String(sensor.type ?? '');
-                const reading = ultimaPorIdTipo.get(`${sid}__${stype}`);
-                const active  = true; // ya filtrados como activos
-                const added = displayItems.some(d => d.sensorId === sid && d.measure === stype);
+              {sortedGroupedActive.map((group, i) => {
+                const rowBg = {
+                  borderBottom: '1px solid var(--color-border)',
+                  backgroundColor: i % 2 !== 0 ? 'color-mix(in srgb, var(--color-bg) 30%, transparent)' : 'transparent',
+                };
 
+                /* ── Fila par SHT31 (temperatura + humedad del mismo puerto) ── */
+                if (group.kind === 'pair') {
+                  const { tSensor, hSensor } = group;
+                  const tReading = ultimaPorIdTipo.get(`${String(tSensor.id)}__temperatura`);
+                  const hReading = ultimaPorIdTipo.get(`${String(hSensor.id)}__humedad`);
+                  const pairAdded = displayItems.some(d => d.type === 'sht31-pair' && d.tempSensorId === String(tSensor.id));
+                  const pairName  = sensorAliases[String(tSensor.id)] || tSensor.name || `SHT31 P${tSensor.puerto}`;
+                  return (
+                    <tr key={`pair-${tSensor.id}-${hSensor.id}`}
+                      className="hover:bg-[color-mix(in_srgb,var(--color-primary)_4%,transparent)] transition-colors"
+                      style={rowBg}>
+                      <td className="py-3 px-4">
+                        <div className="flex items-center gap-2">
+                          <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: '#10b981' }}/>
+                          <span className="font-mono text-xs opacity-50 hidden sm:inline">{tSensor.id}/{hSensor.id}</span>
+                        </div>
+                      </td>
+                      <td className="py-3 px-4">
+                        <span className="text-sm font-medium">{pairName}</span>
+                      </td>
+                      <td className="py-3 px-4">
+                        <span className="inline-flex items-center text-[11px] font-semibold px-2 py-0.5 rounded-full"
+                          style={{ backgroundColor: '#ef444420', color: '#f87171', border: '1px solid #ef444440' }}>
+                          Temp + Hum
+                        </span>
+                      </td>
+                      <td className="py-3 px-4 hidden md:table-cell">
+                        <span className="font-mono text-xs font-semibold px-2 py-0.5 rounded-md"
+                          style={{ backgroundColor: 'color-mix(in srgb, var(--color-primary) 12%, transparent)', color: 'var(--color-primary)' }}>
+                          P{tSensor.puerto}
+                        </span>
+                      </td>
+                      <td className="py-3 px-4">
+                        <div className="flex flex-col gap-0.5">
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-[10px] font-bold w-3" style={{ color: '#f87171' }}>T</span>
+                            <span className="font-mono text-sm font-semibold">
+                              {tReading ? `${tReading.valor}${tReading.unidad ? ` ${tReading.unidad}` : ' °C'}` : '—'}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-[10px] font-bold w-3" style={{ color: '#60a5fa' }}>H</span>
+                            <span className="font-mono text-sm font-semibold">
+                              {hReading ? `${hReading.valor}${hReading.unidad ? ` ${hReading.unidad}` : ' %'}` : '—'}
+                            </span>
+                          </div>
+                          {tReading?.timestamp && (
+                            <div className="text-[10px]" style={{ color: 'var(--text-color-muted, #9ca3af)' }}>
+                              {relativeTime(tReading.timestamp)}
+                            </div>
+                          )}
+                        </div>
+                      </td>
+                      <td className="py-3 px-4 text-center">
+                        <div className="flex items-center justify-center gap-2 flex-wrap">
+                          <button
+                            onClick={() => handleQuickAddPair(group)}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border transition hover:opacity-80"
+                            style={{
+                              backgroundColor: pairAdded ? 'color-mix(in srgb, #10b981 10%, transparent)' : 'color-mix(in srgb, var(--color-primary) 8%, transparent)',
+                              color:       pairAdded ? '#10b981' : 'var(--color-primary)',
+                              borderColor: pairAdded ? '#10b981' : 'var(--color-primary)',
+                            }}>
+                            <FiBarChart2 size={11}/>
+                            {pairAdded ? 'En panel' : 'Añadir panel'}
+                          </button>
+                          <button
+                            onClick={() => handleOpenDashboard(tSensor)}
+                            className="inline-flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs border transition hover:opacity-80 opacity-50"
+                            style={{ borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
+                            title="Ver stats temperatura">
+                            T↗
+                          </button>
+                          <button
+                            onClick={() => handleOpenDashboard(hSensor)}
+                            className="inline-flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs border transition hover:opacity-80 opacity-50"
+                            style={{ borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
+                            title="Ver stats humedad">
+                            H↗
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                }
+
+                /* ── Fila sensor individual ── */
+                const sensor  = group.sensor;
+                const sid     = String(sensor.id);
+                const stype   = String(sensor.type ?? '');
+                const reading = ultimaPorIdTipo.get(`${sid}__${stype}`);
+                const added   = displayItems.some(d => d.sensorId === sid && d.measure === stype);
                 return (
                   <tr
                     key={`${sensor.id}-${sensor.type}`}
                     className="hover:bg-[color-mix(in_srgb,var(--color-primary)_4%,transparent)] transition-colors"
-                    style={{
-                      borderBottom: '1px solid var(--color-border)',
-                      backgroundColor: i % 2 !== 0
-                        ? 'color-mix(in srgb, var(--color-bg) 30%, transparent)'
-                        : 'transparent',
-                    }}
+                    style={rowBg}
                   >
                     <td className="py-3 px-4">
                       <div className="flex items-center gap-2">
-                        <span className="w-2 h-2 rounded-full shrink-0"
-                          style={{ backgroundColor: active ? '#10b981' : '#6b7280' }}
-                          title={active ? 'Activo' : 'Sin datos recientes'}/>
+                        <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: '#10b981' }}/>
                         <span className="font-mono text-xs opacity-50 hidden sm:inline">{sensor.id}</span>
                       </div>
                     </td>
@@ -1162,7 +1365,7 @@ const SensorManagement = ({ sensors = [], lecturas = [], sensorAliases = {}, onS
                   </tr>
                 );
               })}
-              {activeSensors.length === 0 && (
+              {sortedGroupedActive.length === 0 && (
                 <tr>
                   <td colSpan={6} className="py-10 text-center text-sm opacity-35">
                     No hay sensores activos
