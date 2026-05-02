@@ -14,7 +14,7 @@ DB_CFG = dict(
     connection_timeout=3
 )
 
-CONFIG_PATH = "/home/admin/backend/display_config.json"
+CONFIG_PATH = "/home/admin/monitoreo/backend/display_config.json"
 
 DEFAULT_LCD = {
     "enabled": True,

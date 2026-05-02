@@ -614,16 +614,25 @@ const CabinetManagement = ({ cabinets = [], sensors = [], sensorAliases = {}, on
   ];
   const handleModeClick = (modeId) => {
     updateStrip({ mode: modeId, enabled: modeId !== 'off' });
+    if (modeId === 'off') setIsRainbow(false);
+  };
+
+  const applyLedCommand = () => {
+    if (isRainbow) { sendLedCommand('rainbow', {}); return; }
+    const mode = strip.enabled ? strip.mode : 'off';
     const speed = BLINK_SPEEDS.find(s => s.id === strip.blinkSpeed) || BLINK_SPEEDS[1];
-    if (modeId === 'off') sendLedCommand('off', { rgb: [0, 0, 0] });
-    else if (modeId === 'fixed') sendLedCommand('fixed', { rgb: hexToRgb(strip.color) });
-    else if (modeId === 'blink') sendLedCommand('blink', { rgb: hexToRgb(strip.color), period_ms: speed.period_ms });
-    else if (modeId === 'pulse') sendLedCommand('pulse', { rgb: hexToRgb(strip.color), period_ms: 1200 });
-    else if (modeId === 'door_open') sendLedCommand('door_open', { rgb: hexToRgb(strip.color), period_ms: 500 });
-    else if (modeId === 'auto_temp') sendLedCommand('auto_temp', { bands: [
-      { lt: 20, rgb: [0, 110, 255] }, { gte: 20, lt: 27, rgb: [0, 200, 120] },
-      { gte: 27, lt: 30, rgb: [255, 160, 0] }, { gte: 30, rgb: [255, 60, 60] },
-    ]});
+    if (mode === 'blink' || mode === 'door_open') {
+      sendLedCommand(mode, { period_ms: speed.period_ms });
+    } else if (mode === 'pulse') {
+      sendLedCommand('pulse', { period_ms: 1200 });
+    } else if (mode === 'auto_temp') {
+      sendLedCommand('auto_temp', { bands: [
+        { lt: 20, rgb: [0, 110, 255] }, { gte: 20, lt: 27, rgb: [0, 200, 120] },
+        { gte: 27, lt: 30, rgb: [255, 160, 0] }, { gte: 30, rgb: [255, 60, 60] },
+      ]});
+    } else {
+      sendLedCommand(mode, {});
+    }
   };
 
   /* ============================================================
@@ -729,13 +738,7 @@ const CabinetManagement = ({ cabinets = [], sensors = [], sensorAliases = {}, on
                   onChange={c => updateStrip({ color: c })}
                   disabled={!strip.enabled}
                   isRainbow={isRainbow}
-                  onRainbow={v => { setIsRainbow(v); if (v) sendLedCommand('rainbow', {}); else sendLedCommand(strip.mode, { rgb: hexToRgb(strip.color) }); }} />
-                <button disabled={!strip.enabled}
-                  onClick={() => sendLedCommand(strip.mode, { rgb: hexToRgb(strip.color) })}
-                  className="mt-2 w-full py-1.5 text-xs rounded-lg text-white disabled:opacity-40 font-medium"
-                  style={{ backgroundColor: "var(--color-primary)" }}>
-                  Aplicar color
-                </button>
+                  onRainbow={v => setIsRainbow(v)} />
               </div>
 
               {/* Modo */}
@@ -765,7 +768,7 @@ const CabinetManagement = ({ cabinets = [], sensors = [], sensorAliases = {}, on
                   <div className="flex gap-1.5">
                     {BLINK_SPEEDS.map(s => (
                       <button key={s.id}
-                        onClick={() => { updateStrip({ blinkSpeed: s.id }); sendLedCommand('blink', { rgb: hexToRgb(strip.color), period_ms: s.period_ms }); }}
+                        onClick={() => updateStrip({ blinkSpeed: s.id })}
                         className="px-3 py-1 rounded-lg text-xs font-medium border transition-all"
                         style={{
                           backgroundColor: strip.blinkSpeed === s.id ? "color-mix(in srgb,var(--color-primary) 12%,transparent)" : "transparent",
@@ -794,6 +797,14 @@ const CabinetManagement = ({ cabinets = [], sensors = [], sensorAliases = {}, on
                   </div>
                 </div>
               )}
+
+              {/* Botón Aplicar */}
+              <button
+                onClick={applyLedCommand}
+                className="w-full py-2 text-sm rounded-xl text-white font-semibold transition-all active:scale-95"
+                style={{ backgroundColor: "var(--color-primary)" }}>
+                Aplicar
+              </button>
             </div>
           </div>
 

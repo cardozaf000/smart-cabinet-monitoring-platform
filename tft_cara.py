@@ -13,7 +13,7 @@ RST_PIN = 25
 WIDTH   = 240
 HEIGHT  = 240
 
-CONFIG_PATH  = "/home/admin/backend/display_config.json"
+CONFIG_PATH  = "/home/admin/monitoreo/backend/display_config.json"
 MOUNT_OFFSET = 86   # rotación física de montaje — equivale al "0°" del usuario
 
 DEFAULT_TFT = {
