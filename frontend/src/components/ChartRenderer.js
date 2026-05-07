@@ -148,11 +148,21 @@ function tooltipFormatter(timeRange, unit) {
   };
 }
 
+function isDoorMeasure(measure, sensorId = '') {
+  const m = (measure || '').toLowerCase();
+  const s = (sensorId || '').toLowerCase();
+  return m.includes('puerta') || m.includes('reed') || s.includes('reed') || s.includes('puerta');
+}
+function doorLabel(val) {
+  return Number(val) === 0 ? 'Abierto' : 'Cerrado';
+}
+
 function buildOption(config, seriesData, colors, dims = { w: 0, h: 0 }) {
   const { primary, text, border, card, accent } = colors;
-  const type = config.chartType;
-  const unit = config.unitOverride || (seriesData[0]?.unidad ?? '');
-  const dec  = config.decimals ?? 1;
+  const type   = config.chartType;
+  const unit   = config.unitOverride || (seriesData[0]?.unidad ?? '');
+  const dec    = config.decimals ?? 1;
+  const isDoor = isDoorMeasure(config.measure, config.sensorId);
 
   const axisStyle = {
     axisLine:  { lineStyle: { color: border } },
@@ -192,14 +202,16 @@ function buildOption(config, seriesData, colors, dims = { w: 0, h: 0 }) {
   if (type === 'stat') {
     const val = seriesData.length > 0 ? seriesData[seriesData.length - 1]?.value?.[1] ?? 0 : 0;
     const { numFs, unitFs } = statFontSizes(type, dims.w, dims.h);
+    const displayText = isDoor ? doorLabel(val) : String(Number(val).toFixed(dec));
+    const displayColor = isDoor ? (Number(val) === 0 ? '#f87171' : '#4ade80') : primary;
     return {
       backgroundColor: card,
       xAxis: { show: false }, yAxis: { show: false }, series: [],
       graphic: [
         { id: 'val',  type: 'text', left: 'center', top: 'middle',
-          style: { text: String(Number(val).toFixed(dec)), font: `bold ${numFs}px sans-serif`, fill: primary, textAlign: 'center' } },
+          style: { text: displayText, font: `bold ${numFs}px sans-serif`, fill: displayColor, textAlign: 'center' } },
         { id: 'unit', type: 'text', left: 'center', bottom: '12%',
-          style: { text: unit, font: `${unitFs}px sans-serif`, fill: text + 'bb', textAlign: 'center' } },
+          style: { text: isDoor ? '' : unit, font: `${unitFs}px sans-serif`, fill: text + 'bb', textAlign: 'center' } },
       ],
     };
   }
@@ -597,6 +609,7 @@ export default function ChartRenderer({ config, data, height }) {
 
     const statFonts = () => statFontSizes(type, dimsRef.current.w, dimsRef.current.h);
 
+    const isDoor = isDoorMeasure(cfg.measure, cfg.sensorId);
     if (type === 'gauge') {
       const val = seriesData.length > 0 ? seriesData[seriesData.length - 1]?.value?.[1] ?? 0 : 0;
       chartInstance.current.setOption(
@@ -604,10 +617,12 @@ export default function ChartRenderer({ config, data, height }) {
     } else if (type === 'stat' || type === 'stat-bg') {
       const val = seriesData.length > 0 ? seriesData[seriesData.length - 1]?.value?.[1] ?? 0 : 0;
       const { numFs, unitFs } = statFonts();
+      const displayText  = isDoor ? doorLabel(val) : String(Number(val).toFixed(dec));
+      const displayColor = isDoor ? (Number(val) === 0 ? '#f87171' : '#4ade80') : colors.primary;
       chartInstance.current.setOption(
         { graphic: [
-          { id: 'val',  style: { text: String(Number(val).toFixed(dec)), font: `bold ${numFs}px sans-serif` } },
-          { id: 'unit', style: { text: unit, font: `${unitFs}px sans-serif` } },
+          { id: 'val',  style: { text: displayText, font: `bold ${numFs}px sans-serif`, fill: displayColor } },
+          { id: 'unit', style: { text: isDoor ? '' : unit, font: `${unitFs}px sans-serif` } },
         ] }, { notMerge: false });
     } else if (type === 'stat-spark') {
       const val       = seriesData.length > 0 ? seriesData[seriesData.length - 1]?.value?.[1] ?? 0 : 0;

@@ -589,9 +589,12 @@ const PanelItem = memo(function PanelItem({
           {showFooter && (
             <div className="flex items-center justify-between px-2 py-0.5 border-t flex-shrink-0"
               style={{ borderColor: 'var(--color-border)' }}>
-              <span className="font-mono text-[10px] font-semibold" style={{ color: 'var(--color-text)' }}>
-                {reading ? `${reading.valor}${reading.unidad ? ' ' + reading.unidad : ''}` : '—'}
-              </span>
+              {(() => {
+                const isDoor = ['puerta','reed'].some(k => (item.measure||'').toLowerCase().includes(k) || (item.sensorId||'').toLowerCase().includes(k) || (item.sensorName||'').toLowerCase().includes(k));
+                const text   = reading ? (isDoor ? (Number(reading.valor) === 0 ? 'Abierto' : 'Cerrado') : `${reading.valor}${reading.unidad ? ' ' + reading.unidad : ''}`) : '—';
+                const color  = isDoor && reading ? (Number(reading.valor) === 0 ? '#f87171' : '#4ade80') : 'var(--color-text)';
+                return <span className="font-mono text-[10px] font-semibold" style={{ color }}>{text}</span>;
+              })()}
               {reading?.timestamp && (
                 <span className="text-[9px]" style={{ color: 'var(--text-color-muted, #9ca3af)' }}>
                   {relativeTime(reading.timestamp)}
@@ -638,7 +641,7 @@ const SensorManagement = ({ sensors = [], lecturas = [], sensorsLoaded = true, s
   const [dashboardSensor,  setDashboardSensor]  = useState(null); // sensor dashboard completo
   const [fullscreenItem,   setFullscreenItem]   = useState(null); // panel individual fullscreen
   const [showWizard,   setShowWizard]   = useState(false);
-  const [portSort,     setPortSort]     = useState('none'); // 'none' | 'asc' | 'desc'
+  const [portSort,     setPortSort]     = useState('asc');  // 'none' | 'asc' | 'desc'
 
   /* ---- Renombrar sensor ---- */
   const [renameTarget, setRenameTarget] = useState(null); // {sensorId, defaultName}
@@ -970,7 +973,7 @@ const SensorManagement = ({ sensors = [], lecturas = [], sensorsLoaded = true, s
   // Solo sensores con lectura en los últimos 30s
   const onlineSensors = useMemo(() => sensors.filter(s => {
     const r = ultimaPorIdTipo.get(`${String(s.id)}__${String(s.type ?? '')}`);
-    return r?.timestamp && (Date.now() - new Date(r.timestamp).getTime()) < 30_000;
+    return r?.timestamp && (Date.now() - new Date(r.timestamp).getTime()) < 120_000;
   }), [sensors, ultimaPorIdTipo]);
 
   const onlineCount = onlineSensors.length;
@@ -1584,9 +1587,12 @@ const SensorManagement = ({ sensors = [], lecturas = [], sensorsLoaded = true, s
                       }
                     </td>
                     <td className="py-3 px-4">
-                      <span className="font-mono text-sm font-semibold">
-                        {reading ? `${reading.valor}${reading.unidad ? ` ${reading.unidad}` : ''}` : '—'}
-                      </span>
+                      {(() => {
+                        const isDoor = ['puerta','reed'].some(k => stype.toLowerCase().includes(k) || (sensor.name||'').toLowerCase().includes(k) || sid.toLowerCase().includes(k));
+                        const text   = reading ? (isDoor ? (Number(reading.valor) === 0 ? 'Abierto' : 'Cerrado') : `${reading.valor}${reading.unidad ? ` ${reading.unidad}` : ''}`) : '—';
+                        const color  = isDoor && reading ? (Number(reading.valor) === 0 ? '#f87171' : '#4ade80') : 'var(--color-text)';
+                        return <span className="font-mono text-sm font-semibold" style={{ color }}>{text}</span>;
+                      })()}
                       {reading?.timestamp && (
                         <div className="text-[10px] mt-0.5" style={{ color: 'var(--text-color-muted, #9ca3af)' }}>
                           {relativeTime(reading.timestamp)}

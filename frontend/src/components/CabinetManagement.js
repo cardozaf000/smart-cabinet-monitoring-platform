@@ -84,13 +84,20 @@ const postJSON = async (path, body) => {
 /* ============================================================
    HOOK: animación de la tira LED
 ============================================================ */
-function useStripAnimation(strip) {
+function useStripAnimation(strip, doorOpen = true) {
   const [animOpacity, setAnimOpacity] = useState(1);
   useEffect(() => {
     if (!strip?.enabled || strip.mode === 'fixed' || strip.mode === 'off' || strip.mode === 'auto_temp') {
       setAnimOpacity(1); return;
     }
-    if (strip.mode === 'blink' || strip.mode === 'door_open') {
+    if (strip.mode === 'blink') {
+      const ms = { slow: 1000, medium: 500, fast: 200 }[strip.blinkSpeed] || 500;
+      let on = true;
+      const id = setInterval(() => { on = !on; setAnimOpacity(on ? 1 : 0.05); }, ms / 2);
+      return () => clearInterval(id);
+    }
+    if (strip.mode === 'door_open') {
+      if (!doorOpen) { setAnimOpacity(1); return; }  // cerrado → rojo fijo
       const ms = { slow: 1000, medium: 500, fast: 200 }[strip.blinkSpeed] || 500;
       let on = true;
       const id = setInterval(() => { on = !on; setAnimOpacity(on ? 1 : 0.05); }, ms / 2);
@@ -103,7 +110,7 @@ function useStripAnimation(strip) {
       return () => cancelAnimationFrame(raf);
     }
     setAnimOpacity(1);
-  }, [strip?.mode, strip?.enabled, strip?.blinkSpeed]);
+  }, [strip?.mode, strip?.enabled, strip?.blinkSpeed, doorOpen]);
   return animOpacity;
 }
 
@@ -472,6 +479,10 @@ const CabinetManagement = ({ cabinets = [], sensors = [], sensorAliases = {}, on
     const id = setInterval(() => { hue = (hue + 2) % 360; setRainbowColor(`hsl(${hue},100%,60%)`); }, 25);
     return () => clearInterval(id);
   }, [isRainbow]);
+
+  /* ---- Estado puerta (reed switch: 0=abierta, 1=cerrada) ---- */
+  const reedSensor = sensors.find(s => ['puerta','reed'].some(k => (s.type||'').toLowerCase().includes(k) || (s.name||'').toLowerCase().includes(k) || (String(s.id)||'').toLowerCase().includes(k)));
+  const doorOpen   = reedSensor ? Number(reedSensor.lectura?.valor) === 0 : true;
 
   /* ---- Estado de la tira LED (única, en arco U invertida) ---- */
   const [strip, setStripState] = useState(() => {
@@ -902,6 +913,7 @@ const CabinetManagement = ({ cabinets = [], sensors = [], sensorAliases = {}, on
                 isRainbow={isRainbow}
                 rainbowColor={rainbowColor}
                 placedDevices={placedDevices.filter(d => (d.placement.face || 'front') === 'front')}
+                doorOpen={doorOpen}
               />
             </div>
             <div className="flex flex-col items-center gap-1.5">
@@ -1157,7 +1169,7 @@ function RackRail({ side, uCount, mountTop, uH, strip, animOpacity, colorOverrid
 /* ============================================================
    RACK 3D (FRONTAL) — tira LED en arco perimetral ∩
 ============================================================ */
-function Rack3D({ uCount = 42, strip = null, isRainbow = false, rainbowColor = '#ff0000', placedDevices = [] }) {
+function Rack3D({ uCount = 42, strip = null, isRainbow = false, rainbowColor = '#ff0000', placedDevices = [], doorOpen = true }) {
   const W = 230, H = 520;
   const RAIL = 22;
   const MNT_T = 14, MNT_B = 14;
@@ -1165,8 +1177,9 @@ function Rack3D({ uCount = 42, strip = null, isRainbow = false, rainbowColor = '
   const MNT_W = W - RAIL * 2;
   const U_H   = MNT_H / uCount;
 
-  const animOpacity = useStripAnimation(strip);
-  const c = isRainbow ? rainbowColor : (strip?.color || '#00aaff');
+  const animOpacity = useStripAnimation(strip, doorOpen);
+  const doorColor   = strip?.mode === 'door_open' && !doorOpen ? '#ff2020' : null;
+  const c = isRainbow ? rainbowColor : (doorColor || strip?.color || '#00aaff');
   const isOn = strip?.enabled || isRainbow;
   const neonTop = isOn
     ? `0 0 2px #fff, 0 0 6px #fff, 0 0 12px ${c}, 0 0 25px ${c}, 0 0 50px ${c}88, 0 0 80px ${c}44`
@@ -1181,9 +1194,9 @@ function Rack3D({ uCount = 42, strip = null, isRainbow = false, rainbowColor = '
           border: "2px solid #26334e", overflow: "hidden",
         }}>
           {/* Riel izquierdo — tira neon */}
-          <RackRail side="left"  uCount={uCount} mountTop={MNT_T} uH={U_H} strip={isOn ? (strip || { enabled: true, mode: 'fixed', color: c, blinkSpeed: 'medium' }) : null} animOpacity={animOpacity} colorOverride={isRainbow ? c : null} />
+          <RackRail side="left"  uCount={uCount} mountTop={MNT_T} uH={U_H} strip={isOn ? (strip || { enabled: true, mode: 'fixed', color: c, blinkSpeed: 'medium' }) : null} animOpacity={animOpacity} colorOverride={isRainbow ? c : (doorColor || null)} />
           {/* Riel derecho — tira neon */}
-          <RackRail side="right" uCount={uCount} mountTop={MNT_T} uH={U_H} strip={isOn ? (strip || { enabled: true, mode: 'fixed', color: c, blinkSpeed: 'medium' }) : null} animOpacity={animOpacity} colorOverride={isRainbow ? c : null} />
+          <RackRail side="right" uCount={uCount} mountTop={MNT_T} uH={U_H} strip={isOn ? (strip || { enabled: true, mode: 'fixed', color: c, blinkSpeed: 'medium' }) : null} animOpacity={animOpacity} colorOverride={isRainbow ? c : (doorColor || null)} />
 
           {/* Arco superior neon (∩) */}
           {isOn && (
