@@ -19,6 +19,7 @@ def create_app():
         "http://127.0.0.1:3000",
         "http://192.168.0.25:3000",                             # acceso LAN (IP anterior)
         "http://192.168.0.38",                                  # acceso LAN directo (nginx)
+        "http://192.168.0.40",                                  # acceso LAN directo (nginx)
     ]
 
     CORS(

@@ -355,10 +355,14 @@ function LogoSlot({ label, description, value, onChange }) {
       <input
         ref={fileRef}
         type="file"
-        accept="image/png,image/jpeg,image/jpg"
+        accept="image/svg+xml,image/png,image/webp,image/jpeg,image/jpg"
         onChange={handleFile}
         className="hidden"
       />
+      <p className="text-[10px] leading-relaxed" style={{ color: "var(--color-text-muted, #888)" }}>
+        <strong>Recomendado:</strong> SVG (vectorial, escala sin pixelarse) o PNG con fondo transparente.<br/>
+        Dimensiones: <strong>200 × 200 px</strong> como mínimo · ratio 1:1 para sidebar · 4:1 para login.
+      </p>
 
       {value && (
         <button
@@ -787,7 +791,7 @@ export default function VisualSettings() {
                         {logoFile ? logoFile.name : "Subir archivo"}
                         <input
                           type="file"
-                          accept="image/png,image/jpeg,image/jpg"
+                          accept="image/svg+xml,image/png,image/webp,image/jpeg,image/jpg"
                           className="hidden"
                           onChange={(e) => setLogoFile(e.target.files[0])}
                         />

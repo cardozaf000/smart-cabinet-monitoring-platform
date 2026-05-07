@@ -2,6 +2,32 @@
 // 🌐 APP.JS — Compatible con LAN (http) y Cloud (https)
 // ==========================================================
 import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
+
+// Construye el Map de sensores deduplicado (queda la lectura más reciente)
+function buildSensorMap(data) {
+  const map = new Map();
+  for (const item of data) {
+    const key  = `${item.sensor_id}-${item.tipo}`;
+    const ts   = new Date(item?.lectura?.timestamp || 0).getTime();
+    const prev = map.get(key);
+    if (!prev || ts > new Date(prev?.lectura?.timestamp || 0).getTime())
+      map.set(key, {
+        id:        item.sensor_id,
+        name:      item.nombre,
+        type:      item.tipo,
+        pin:       item.pin    ?? null,
+        puerto:    item.puerto ?? null,
+        cabinetId: item.cabinetId ?? "cab-desconocido",
+        status:    item.status ?? "OK",
+        lectura: {
+          valor:     item?.lectura?.valor     ?? null,
+          unidad:    item?.lectura?.unidad    ?? "",
+          timestamp: item?.lectura?.timestamp ?? null,
+        },
+      });
+  }
+  return map;
+}
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 
 import LayoutHeader from "./components/LayoutHeader";
@@ -45,6 +71,7 @@ const App = () => {
     window.addEventListener("resize", check);
     return () => window.removeEventListener("resize", check);
   }, []);
+
 
   // --- Estado de sesión / datos ---
   const [user, setUser] = useState(null);
@@ -125,14 +152,7 @@ const App = () => {
       .then(r => r.ok ? r.json() : [])
       .then(data => {
         if (!Array.isArray(data)) return;
-        const map = new Map();
-        for (const item of data) {
-          const key = `${item.sensor_id}-${item.tipo}`;
-          const ts = new Date(item?.lectura?.timestamp || 0).getTime();
-          if (!map.has(key) || ts > new Date(map.get(key)?.lectura?.timestamp || 0).getTime())
-            map.set(key, { id: item.sensor_id, name: item.nombre, type: item.tipo, pin: item.pin ?? null, puerto: item.puerto ?? null, cabinetId: item.cabinetId ?? "cab-desconocido", status: item.status ?? "OK", lectura: { valor: item?.lectura?.valor ?? null, unidad: item?.lectura?.unidad ?? "", timestamp: item?.lectura?.timestamp ?? null } });
-        }
-        setSensors(Array.from(map.values()));
+        setSensors(Array.from(buildSensorMap(data).values()));
         setLecturas(data);
         if (!sensorsLoadedRef.current) { sensorsLoadedRef.current = true; setSensorsLoaded(true); }
       })
@@ -140,64 +160,64 @@ const App = () => {
   }, []);
 
   // ==========================================================
-  // 🔁 Polling de sensores
+  // ⚡ SSE (Server-Sent Events) con fallback a polling
   // ==========================================================
   useEffect(() => {
     if (!isAuthenticated() || (currentPage !== "sensors" && currentPage !== "cabinets")) return;
 
-    let isMounted = true;
-    const controller = new AbortController();
+    let isMounted  = true;
+    let es         = null;
+    let fallbackIv = null;
+    let refreshIv  = null;
 
-    const fetchSensores = async () => {
-      if (!visibilityRef.current) return;
-      try {
-        const res = await fetch(`${BACKEND}/datos_sensores`, {
-          signal: controller.signal,
-        });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = await res.json();
-
-        // Filtrar lecturas duplicadas (quedarse con la más reciente)
-        const map = new Map();
-        for (const item of data) {
-          const key = `${item.sensor_id}-${item.tipo}`;
-          const ts = new Date(item?.lectura?.timestamp || 0).getTime();
-          const prevTs = new Date(map.get(key)?.lectura?.timestamp || 0).getTime();
-          if (!map.has(key) || ts > prevTs) {
-            map.set(key, {
-              id: item.sensor_id,
-              name: item.nombre,
-              type: item.tipo,
-              pin: item.pin ?? null,
-              puerto: item.puerto ?? null,
-              cabinetId: item.cabinetId ?? "cab-desconocido",
-              status: item.status ?? "OK",
-              lectura: {
-                valor: item?.lectura?.valor ?? null,
-                unidad: item?.lectura?.unidad ?? "",
-                timestamp: item?.lectura?.timestamp ?? null,
-              },
-            });
-          }
-        }
-
-        if (isMounted) {
-          const sensArr = Array.from(map.values());
-          setSensors(sensArr);
-          setLecturas(data);
-          if (!sensorsLoadedRef.current) { sensorsLoadedRef.current = true; setSensorsLoaded(true); }
-        }
-      } catch (err) {
-        if (err.name !== "AbortError") console.error("Error al obtener sensores:", err);
-      }
+    const applyData = (data) => {
+      if (!isMounted || !Array.isArray(data)) return;
+      setSensors(Array.from(buildSensorMap(data).values()));
+      setLecturas(data);
+      if (!sensorsLoadedRef.current) { sensorsLoadedRef.current = true; setSensorsLoaded(true); }
     };
 
-    fetchSensores();
-    const intervalId = setInterval(fetchSensores, 2000);
+    const fetchFull = async () => {
+      if (!visibilityRef.current) return;
+      try {
+        const res = await fetch(`${BACKEND}/datos_sensores`);
+        if (res.ok) applyData(await res.json());
+      } catch { /* silencioso */ }
+    };
+
+    const startFallback = () => {
+      if (fallbackIv) return;
+      fallbackIv = setInterval(fetchFull, 2000);
+    };
+
+    // Carga inicial
+    fetchFull();
+
+    // SSE
+    try {
+      es = new EventSource(`${BACKEND}/stream`);
+      es.onmessage = (e) => {
+        try {
+          const data = JSON.parse(e.data);
+          if (Array.isArray(data)) applyData(data);
+        } catch { /* ignorar frame malformado */ }
+      };
+      es.onerror = () => {
+        if (es) { es.close(); es = null; }
+        startFallback();
+      };
+    } catch {
+      startFallback();
+    }
+
+    // Refresco completo cada 30 s (incluye sensores RPi no cubiertos por SSE)
+    refreshIv = setInterval(fetchFull, 30_000);
+
     return () => {
       isMounted = false;
-      controller.abort();
-      clearInterval(intervalId);
+      if (es) es.close();
+      if (fallbackIv) clearInterval(fallbackIv);
+      if (refreshIv)  clearInterval(refreshIv);
     };
   }, [currentPage]);
 
@@ -205,7 +225,7 @@ const App = () => {
   useEffect(() => {
     const t = setTimeout(() => {
       if (!sensorsLoadedRef.current) { sensorsLoadedRef.current = true; setSensorsLoaded(true); }
-    }, 60000);
+    }, 10000);
     return () => clearTimeout(t);
   }, []);
 
@@ -213,19 +233,15 @@ const App = () => {
   // 🧩 Handlers
   // ==========================================================
   const handleRescanSensors = useCallback(() => {
-    const updatedSensors = sensors.map((s) => ({
-      ...s,
-      status: Math.random() > 0.9 ? "Alerta" : "OK",
-    }));
-    setSensors(updatedSensors);
-    setCabinets((prev) =>
-      prev.map((cab) => {
-        const cabSensors = updatedSensors.filter((s) => s.cabinetId === cab.id);
-        const hasAlert = cabSensors.some((s) => s.status === "Alerta");
-        return { ...cab, status: hasAlert ? "Alerta" : "OK", sensors: cabSensors };
+    // Fuerza un nuevo fetch inmediato de /datos_sensores
+    fetch(`${BACKEND}/datos_sensores`)
+      .then(r => r.ok ? r.json() : [])
+      .then(data => {
+        if (!Array.isArray(data)) return;
+        setSensors(Array.from(buildSensorMap(data).values()));
       })
-    );
-  }, [sensors]);
+      .catch(() => {});
+  }, []);
 
   const handleUpdateSensor = useCallback((id, updatedSensor) => {
     setSensors((prev) => updateItemInList(prev, id, updatedSensor));
@@ -295,7 +311,7 @@ const App = () => {
   }, []);
 
   const handleUpdateSettings = useCallback((newSettings) => setSettings(newSettings), []);
-  const handleSyncWithZabbix = useCallback(() => alert("Sincronizando con Zabbix... (simulado)"), []);
+  const handleSyncWithZabbix = useCallback(() => {}, []);
 
   // --- Guardar alias de sensor (actualiza estado + backend) ---
   const handleSensorRename = useCallback((sensorId, alias) => {
@@ -390,16 +406,16 @@ const App = () => {
                 onDeleteCabinet={handleDeleteCabinet}
               />
             )}
-            {currentPage === "network" && <NetworkConfig />}
-            {currentPage === "alerts" && <AlertsPage onNavigate={setCurrentPage} />}
-            {currentPage === "incidents" && <IncidentsPage />}
-            {currentPage === "usuarios"  && <UsersAdmin />}
-            {currentPage === "auditoria" && <AuditLog />}
-            {currentPage === "visual" && (
+            <div style={{ display: currentPage === "network"   ? undefined : "none" }}><NetworkConfig /></div>
+            <div style={{ display: currentPage === "alerts"    ? undefined : "none" }}><AlertsPage onNavigate={setCurrentPage} /></div>
+            <div style={{ display: currentPage === "incidents" ? undefined : "none" }}><IncidentsPage /></div>
+            <div style={{ display: currentPage === "usuarios"  ? undefined : "none" }}><UsersAdmin /></div>
+            <div style={{ display: currentPage === "auditoria" ? undefined : "none" }}><AuditLog /></div>
+            <div style={{ display: currentPage === "visual"    ? undefined : "none" }}>
               <VisualSettings settings={settings} onUpdate={handleUpdateSettings} onSync={handleSyncWithZabbix} />
-            )}
-            {currentPage === "backup" && <BackupRestore />}
-            {currentPage === "ml"     && <MLPage />}
+            </div>
+            <div style={{ display: currentPage === "backup"    ? undefined : "none" }}><BackupRestore /></div>
+            <div style={{ display: currentPage === "ml"        ? undefined : "none" }}><MLPage /></div>
           </div>
         </main>
       </div>
@@ -425,7 +441,6 @@ const App = () => {
       handleSyncWithZabbix,
       sensorAliases,
       handleSensorRename,
-      // backup page no necesita deps extra
     ]
   );
 

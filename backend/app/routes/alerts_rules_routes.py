@@ -2,6 +2,7 @@ from flask import Blueprint, request, jsonify
 from app.db_config import get_db_connection
 from app.auth_utils import token_required
 from app.audit_utils import log_action
+from app.alerts_engine import invalidate_rules_cache
 import json
 
 alerts_rules_bp = Blueprint("alerts_rules_bp", __name__)
@@ -38,6 +39,7 @@ def delete_rule(rule_id):
         db.commit()
         cur.close()
         db.close()
+        invalidate_rules_cache()
         log_action("DELETE_ALERT_RULE", "alert_rule", rule_id, status="warning")
         return jsonify({"ok": True})
     except Exception as e:
@@ -94,6 +96,7 @@ def insert_or_update_rule(d, rule_id=None):
             ))
             db.commit()
             new_id = cur.lastrowid
+            invalidate_rules_cache()
             log_action("CREATE_ALERT_RULE", "alert_rule", new_id,
                        {"name": d["name"], "metric": d["metric"], "severity": d["severity"]})
             return jsonify({"id": new_id})
@@ -121,6 +124,7 @@ def insert_or_update_rule(d, rule_id=None):
                 rule_id
             ))
             db.commit()
+            invalidate_rules_cache()
             log_action("UPDATE_ALERT_RULE", "alert_rule", rule_id,
                        {"name": d["name"], "metric": d["metric"], "severity": d["severity"]})
             return jsonify({"id": rule_id})

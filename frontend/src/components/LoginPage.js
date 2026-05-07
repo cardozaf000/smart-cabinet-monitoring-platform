@@ -137,11 +137,18 @@ export default function LoginPage({ onLogin }) {
             <div
               className="w-12 h-12 rounded-xl flex items-center justify-center mb-8"
               style={{
-                backgroundColor: "color-mix(in srgb, var(--color-primary) 15%, transparent)",
-                border:          "1px solid color-mix(in srgb, var(--color-primary) 25%, transparent)",
+                background: "linear-gradient(145deg, var(--color-primary), color-mix(in srgb, var(--color-primary) 65%, var(--color-accent)))",
+                boxShadow:  "0 4px 16px color-mix(in srgb, var(--color-primary) 45%, transparent)",
               }}
             >
-              <FiActivity size={24} style={{ color: "var(--color-primary)" }} />
+              <svg width="28" height="28" viewBox="0 0 26 26" fill="none">
+                <rect x="3" y="4" width="20" height="5" rx="1.5" fill="white" opacity="0.95"/>
+                <rect x="3" y="11" width="20" height="5" rx="1.5" fill="white" opacity="0.70"/>
+                <circle cx="20.5" cy="6.5" r="1.2" fill="white"/>
+                <circle cx="20.5" cy="13.5" r="1.2" fill="white" opacity="0.75"/>
+                <path d="M3 21 L6 21 L8.5 17.5 L11 24 L13.5 18.5 L16 22 L18.5 21 L23 21"
+                  stroke="white" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" opacity="0.95"/>
+              </svg>
             </div>
           )}
 
@@ -204,8 +211,17 @@ export default function LoginPage({ onLogin }) {
                   onError={(e) => { e.currentTarget.style.display = "none"; }} />
               ) : (
                 <div className="w-9 h-9 rounded-xl flex items-center justify-center"
-                  style={{ backgroundColor: "color-mix(in srgb, var(--color-primary) 15%, transparent)" }}>
-                  <FiActivity size={18} style={{ color: "var(--color-primary)" }} />
+                  style={{
+                    background: "linear-gradient(145deg, var(--color-primary), color-mix(in srgb, var(--color-primary) 65%, var(--color-accent)))",
+                    boxShadow:  "0 3px 10px color-mix(in srgb, var(--color-primary) 40%, transparent)",
+                  }}>
+                  <svg width="20" height="20" viewBox="0 0 26 26" fill="none">
+                    <rect x="3" y="4" width="20" height="5" rx="1.5" fill="white" opacity="0.95"/>
+                    <rect x="3" y="11" width="20" height="5" rx="1.5" fill="white" opacity="0.70"/>
+                    <circle cx="20.5" cy="6.5" r="1.2" fill="white"/>
+                    <path d="M3 21 L6 21 L8.5 17.5 L11 24 L13.5 18.5 L16 22 L18.5 21 L23 21"
+                      stroke="white" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" opacity="0.95"/>
+                  </svg>
                 </div>
               )}
             </div>
@@ -325,15 +341,9 @@ export default function LoginPage({ onLogin }) {
 
           {/* Footer del card */}
           <div
-            className="mt-7 pt-5 text-center space-y-1"
+            className="mt-7 pt-5 text-center"
             style={{ borderTop: "1px solid var(--color-border)" }}
           >
-            <p className="text-[11px]" style={{ color: "var(--color-text-muted, #6b7280)" }}>
-              API:{" "}
-              <span className="font-mono" style={{ color: "var(--color-primary)" }}>
-                {BACKEND}
-              </span>
-            </p>
             <p className="text-[11px]" style={{ color: "var(--color-text-muted, #6b7280)" }}>
               © {new Date().getFullYear()} Sistema de Monitoreo — Proyecto de Tesis
             </p>

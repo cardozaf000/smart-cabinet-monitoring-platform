@@ -23,9 +23,10 @@ const PAGE_INFO = {
 // Badge de rol
 // ============================================================
 const ROL_STYLE = {
-  admin:    { bg: "#6366f122", text: "#818cf8", border: "#6366f140", label: "Administrador", Icon: FiShield  },
-  operador: { bg: "#10b98122", text: "#34d399", border: "#10b98140", label: "Operador",       Icon: FiUser   },
-  viewer:   { bg: "#6b728022", text: "#9ca3af", border: "#6b728040", label: "Solo lectura",   Icon: FiEye    },
+  superadmin: { bg: "#f59e0b22", text: "#f59e0b", border: "#f59e0b40", label: "Superadmin",    Icon: FiShield },
+  admin:      { bg: "#6366f122", text: "#818cf8", border: "#6366f140", label: "Administrador", Icon: FiShield },
+  operador:   { bg: "#10b98122", text: "#34d399", border: "#10b98140", label: "Operador",       Icon: FiUser   },
+  viewer:     { bg: "#6b728022", text: "#9ca3af", border: "#6b728040", label: "Solo lectura",   Icon: FiEye    },
 };
 
 function RolBadge({ rol }) {

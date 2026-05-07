@@ -1,0 +1,19 @@
+{
+  "strip": {
+    "enabled": true,
+    "position": "arc",
+    "mode": "fixed",
+    "color": "#000064"
+  },
+  "alert_bindings_enabled": true,
+  "alert_bindings": [
+    {
+      "rule_id": "any",
+      "action_mode": "blink",
+      "action_color": "#ff0000",
+      "action_speed": "medium",
+      "id": "1777776389586"
+    }
+  ],
+  "restore_on_resolve": true
+}

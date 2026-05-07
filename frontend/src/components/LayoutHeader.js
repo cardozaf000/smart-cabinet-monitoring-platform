@@ -331,11 +331,16 @@ export default function LayoutHeader({ currentPage, onNavigate, collapsed, setCo
           <div
             className="rounded-xl flex items-center justify-center shrink-0"
             style={{
-              width:  44,
-              height: 44,
-              backgroundColor: "color-mix(in srgb, var(--color-primary) 12%, transparent)",
-              border:          "1px solid color-mix(in srgb, var(--color-primary) 22%, transparent)",
-              overflow:        "hidden",
+              width:    44,
+              height:   44,
+              overflow: "hidden",
+              ...(logoSrc ? {
+                backgroundColor: "color-mix(in srgb, var(--color-primary) 12%, transparent)",
+                border:          "1px solid color-mix(in srgb, var(--color-primary) 22%, transparent)",
+              } : {
+                background: "linear-gradient(145deg, var(--color-primary), color-mix(in srgb, var(--color-primary) 65%, var(--color-accent)))",
+                boxShadow:  "0 4px 14px color-mix(in srgb, var(--color-primary) 45%, transparent)",
+              }),
             }}
           >
             {logoSrc ? (
@@ -346,7 +351,14 @@ export default function LayoutHeader({ currentPage, onNavigate, collapsed, setCo
                 onError={() => setLogoSrc("")}
               />
             ) : (
-              <FiActivity size={20} style={{ color: "var(--color-primary)" }} />
+              <svg width="26" height="26" viewBox="0 0 26 26" fill="none">
+                <rect x="3" y="4" width="20" height="5" rx="1.5" fill="white" opacity="0.95"/>
+                <rect x="3" y="11" width="20" height="5" rx="1.5" fill="white" opacity="0.70"/>
+                <circle cx="20.5" cy="6.5" r="1.2" fill="white"/>
+                <circle cx="20.5" cy="13.5" r="1.2" fill="white" opacity="0.75"/>
+                <path d="M3 21 L6 21 L8.5 17.5 L11 24 L13.5 18.5 L16 22 L18.5 21 L23 21"
+                  stroke="white" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" opacity="0.95"/>
+              </svg>
             )}
           </div>
 

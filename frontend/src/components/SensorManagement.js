@@ -115,7 +115,8 @@ function normalizarLecturas(arr) {
     const nested    = l.lectura || {};
     const sensorId  = String(l.sensor_id ?? l.sensorId ?? l.id_sensor ?? '');
     const tipo      = String(l.tipo ?? l.tipo_medida ?? l.type ?? '');
-    const valor     = Number(l.valor ?? nested.valor);
+    const rawValor  = l.valor ?? nested.valor ?? null;
+    const valor     = rawValor !== null ? Number(rawValor) : NaN;
     const unidad    = (l.unidad ?? nested.unidad ?? '').trim();
     const timestamp = l.timestamp ?? nested.timestamp ?? null;
     if (sensorId && tipo && !Number.isNaN(valor) && timestamp) {
@@ -966,18 +967,24 @@ const SensorManagement = ({ sensors = [], lecturas = [], sensorsLoaded = true, s
   const dynamicCount = useMemo(() => visibleDisplayItems.filter(i => i.type !== 'fixed').length, [visibleDisplayItems]);
   const totalPanels  = visibleDisplayItems.length;
 
-  const activeSensors = useMemo(() => sensors.filter(s => {
-    const reading = ultimaPorIdTipo.get(`${String(s.id)}__${String(s.type ?? '')}`);
-    return reading?.timestamp && (Date.now() - new Date(reading.timestamp).getTime()) < 5 * 60 * 1000;
+  // Solo sensores con lectura en los últimos 30s
+  const onlineSensors = useMemo(() => sensors.filter(s => {
+    const r = ultimaPorIdTipo.get(`${String(s.id)}__${String(s.type ?? '')}`);
+    return r?.timestamp && (Date.now() - new Date(r.timestamp).getTime()) < 30_000;
   }), [sensors, ultimaPorIdTipo]);
 
-  const groupedActive = useMemo(() => groupSensors(activeSensors), [activeSensors]);
+  const onlineCount = onlineSensors.length;
 
-  const sortedGroupedActive = useMemo(() => {
-    if (portSort === 'none') return groupedActive;
+  const groupedAll = useMemo(() => groupSensors(onlineSensors), [onlineSensors]);
+
+  const sortedGroupedAll = useMemo(() => {
+    if (portSort === 'none') return groupedAll;
     const getPuerto = (g) => g.kind === 'pair' ? (g.tSensor.puerto ?? Infinity) : (g.sensor.puerto ?? Infinity);
-    return [...groupedActive].sort((a, b) => portSort === 'asc' ? getPuerto(a) - getPuerto(b) : getPuerto(b) - getPuerto(a));
-  }, [groupedActive, portSort]);
+    return [...groupedAll].sort((a, b) => portSort === 'asc' ? getPuerto(a) - getPuerto(b) : getPuerto(b) - getPuerto(a));
+  }, [groupedAll, portSort]);
+
+  // Compatibilidad con AddChartWizard (sigue necesitando la lista plana)
+  const activeSensors = sensors;
 
   /* ---- Handlers memoizados ---- */
   const handleAddWidget     = useCallback((w)  => { setDisplayItems(prev => [...prev, w]); setShowWizard(false); }, []);
@@ -1087,12 +1094,12 @@ const SensorManagement = ({ sensors = [], lecturas = [], sensorsLoaded = true, s
             <h1 className="text-2xl font-bold tracking-tight" style={{ color: 'var(--color-text)' }}>
               Monitor de Sensores
             </h1>
-            {activeSensors.length > 0 && (
+            {onlineCount > 0 && (
               <span className="text-xs font-semibold px-2.5 py-1 rounded-full" style={{
                 backgroundColor: 'color-mix(in srgb, var(--color-primary) 15%, transparent)',
                 color: 'var(--color-primary)',
               }}>
-                {activeSensors.length} sensores activos
+                {onlineCount} online
               </span>
             )}
           </div>
@@ -1402,8 +1409,8 @@ const SensorManagement = ({ sensors = [], lecturas = [], sensorsLoaded = true, s
         style={{ backgroundColor: 'var(--color-card)', borderColor: 'var(--color-border)' }}>
         <div className="flex items-center justify-between px-5 py-3.5 border-b"
           style={{ borderColor: 'var(--color-border)' }}>
-          <h2 className="text-sm font-semibold tracking-wide uppercase opacity-70">Sensores activos</h2>
-          <span className="text-xs opacity-45">{activeSensors.length} activos</span>
+          <h2 className="text-sm font-semibold tracking-wide uppercase opacity-70">Sensores</h2>
+          <span className="text-xs opacity-45">{onlineCount} online</span>
         </div>
 
         <div className="overflow-x-auto">
@@ -1432,7 +1439,7 @@ const SensorManagement = ({ sensors = [], lecturas = [], sensorsLoaded = true, s
               </tr>
             </thead>
             <tbody>
-              {sortedGroupedActive.map((group, i) => {
+              {sortedGroupedAll.map((group, i) => {
                 const rowBg = {
                   borderBottom: '1px solid var(--color-border)',
                   backgroundColor: i % 2 !== 0 ? 'color-mix(in srgb, var(--color-bg) 30%, transparent)' : 'transparent',
@@ -1441,10 +1448,11 @@ const SensorManagement = ({ sensors = [], lecturas = [], sensorsLoaded = true, s
                 /* ── Fila par SHT31 (temperatura + humedad del mismo puerto) ── */
                 if (group.kind === 'pair') {
                   const { tSensor, hSensor } = group;
-                  const tReading = ultimaPorIdTipo.get(`${String(tSensor.id)}__temperatura`);
-                  const hReading = ultimaPorIdTipo.get(`${String(hSensor.id)}__humedad`);
+                  const tReading  = ultimaPorIdTipo.get(`${String(tSensor.id)}__temperatura`);
+                  const hReading  = ultimaPorIdTipo.get(`${String(hSensor.id)}__humedad`);
                   const pairAdded = displayItems.some(d => d.type === 'sht31-pair' && d.tempSensorId === String(tSensor.id));
                   const pairName  = sensorAliases[String(tSensor.id)] || tSensor.name || `SHT31 P${tSensor.puerto}`;
+                  const pairOnline = tReading?.timestamp && (Date.now() - new Date(tReading.timestamp).getTime()) < 30_000;
                   return (
                     <tr key={`pair-${tSensor.id}-${hSensor.id}`}
                       className="hover:bg-[color-mix(in_srgb,var(--color-primary)_4%,transparent)] transition-colors"
@@ -1525,11 +1533,12 @@ const SensorManagement = ({ sensors = [], lecturas = [], sensorsLoaded = true, s
                 }
 
                 /* ── Fila sensor individual ── */
-                const sensor  = group.sensor;
-                const sid     = String(sensor.id);
-                const stype   = String(sensor.type ?? '');
-                const reading = ultimaPorIdTipo.get(`${sid}__${stype}`);
-                const added   = displayItems.some(d => d.sensorId === sid && d.measure === stype);
+                const sensor   = group.sensor;
+                const sid      = String(sensor.id);
+                const stype    = String(sensor.type ?? '');
+                const reading  = ultimaPorIdTipo.get(`${sid}__${stype}`);
+                const added    = displayItems.some(d => d.sensorId === sid && d.measure === stype);
+                const isOnline = reading?.timestamp && (Date.now() - new Date(reading.timestamp).getTime()) < 30_000;
                 return (
                   <tr
                     key={`${sensor.id}-${sensor.type}`}
@@ -1602,10 +1611,10 @@ const SensorManagement = ({ sensors = [], lecturas = [], sensorsLoaded = true, s
                   </tr>
                 );
               })}
-              {sortedGroupedActive.length === 0 && (
+              {sortedGroupedAll.length === 0 && (
                 <tr>
                   <td colSpan={6} className="py-10 text-center text-sm opacity-35">
-                    {sensorsLoaded ? 'No hay sensores activos' : 'Conectando con el sistema…'}
+                    {sensorsLoaded ? 'No hay sensores registrados' : 'Conectando con el sistema…'}
                   </td>
                 </tr>
               )}
@@ -1617,9 +1626,9 @@ const SensorManagement = ({ sensors = [], lecturas = [], sensorsLoaded = true, s
       {/* Wizard */}
       {showWizard && (
         <AddChartWizard
-          sensors={activeSensors}
+          sensors={sensors}
           lecturasNormalizadas={lecturasNormalizadas}
-          sensorGroups={groupedActive}
+          sensorGroups={groupedAll}
           onAdd={handleAddWidget}
           onCancel={() => setShowWizard(false)}
         />

@@ -1,5 +1,6 @@
 
 import json
+import queue
 import threading
 import time
 from typing import Any, Dict, List, Optional
@@ -31,6 +32,52 @@ _estado_lock = threading.Lock()
 _mqtt_pub_client: Optional[mqtt.Client] = None
 _pub_lock = threading.Lock()
 
+# Acumulador por sensor: clave = "{sensor_id}_{tipo}" → lectura formateada
+_sensor_latest: Dict[str, Dict[str, Any]] = {}
+_sensor_latest_lock = threading.Lock()
+
+# Colas SSE: una por cliente conectado
+_sse_queues: List[queue.Queue] = []
+_sse_lock = threading.Lock()
+
+
+def register_sse_client() -> queue.Queue:
+    q: queue.Queue = queue.Queue(maxsize=10)
+    with _sse_lock:
+        _sse_queues.append(q)
+    return q
+
+
+def unregister_sse_client(q: queue.Queue) -> None:
+    with _sse_lock:
+        try:
+            _sse_queues.remove(q)
+        except ValueError:
+            pass
+
+
+def _push_sse_snapshot() -> None:
+    """Envía el snapshot completo de _sensor_latest a todos los clientes SSE."""
+    with _sensor_latest_lock:
+        snapshot = list(_sensor_latest.values())
+    if not snapshot:
+        return
+    with _sse_lock:
+        dead: List[queue.Queue] = []
+        for q in _sse_queues:
+            try:
+                q.put_nowait(snapshot)
+            except queue.Full:
+                dead.append(q)
+        for q in dead:
+            _sse_queues.remove(q)
+
+
+def get_sensor_latest() -> List[Dict[str, Any]]:
+    """Devuelve el snapshot en memoria (para /datos_sensores sin consulta a BD)."""
+    with _sensor_latest_lock:
+        return list(_sensor_latest.values())
+
 
 def _map_lecturas(payload: Dict[str, Any]) -> List[Dict[str, Any]]:
     out: List[Dict[str, Any]] = []
@@ -56,9 +103,13 @@ def _map_lecturas(payload: Dict[str, Any]) -> List[Dict[str, Any]]:
     if "sht31" in payload:
         for s in payload["sht31"]:
             addr   = s.get("addr")
-            puerto = s.get("port", ch)
+            # ESP32 envía "canal"; "port" es el campo antiguo como fallback
+            puerto = s.get("canal", s.get("port", ch))
             sid    = f"sht31_{addr}_p{puerto}"
             nombre = f"SHT3X P{puerto}"
+            # ESP32 envía "t" y "h"; "temperatura"/"humedad" son nombres alternativos
+            temp_val = s.get("t", s.get("temperatura"))
+            hum_val  = s.get("h", s.get("humedad"))
             out.append({
                 "sensor_id": sid,
                 "nombre": nombre,
@@ -66,7 +117,7 @@ def _map_lecturas(payload: Dict[str, Any]) -> List[Dict[str, Any]]:
                 "gabinete_id": gabinete_id,
                 "puerto": puerto,
                 "lectura": {
-                    "valor": s.get("temperatura"),
+                    "valor": temp_val,
                     "unidad": "°C",
                     "timestamp": ts
                 }
@@ -78,7 +129,7 @@ def _map_lecturas(payload: Dict[str, Any]) -> List[Dict[str, Any]]:
                 "gabinete_id": gabinete_id,
                 "puerto": puerto,
                 "lectura": {
-                    "valor": s.get("humedad"),
+                    "valor": hum_val,
                     "unidad": "%",
                     "timestamp": ts
                 }
@@ -86,12 +137,13 @@ def _map_lecturas(payload: Dict[str, Any]) -> List[Dict[str, Any]]:
 
     if "bh1750" in payload:
         for s in payload["bh1750"]:
+            puerto_bh = s.get("canal", s.get("port", ch))
             out.append({
-                "sensor_id": s.get("addr"),
-                "nombre": "BH1750",
+                "sensor_id": f"bh1750_{s.get('addr')}_p{puerto_bh}",
+                "nombre": f"BH1750 P{puerto_bh}",
                 "tipo": "luz",
                 "gabinete_id": gabinete_id,
-                "puerto": s.get("port", ch),
+                "puerto": puerto_bh,
                 "lectura": {
                     "valor": s.get("lux"),
                     "unidad": "lux",
@@ -105,24 +157,29 @@ def _map_lecturas(payload: Dict[str, Any]) -> List[Dict[str, Any]]:
         if isinstance(mpu_list, dict):
             mpu_list = [mpu_list]   # compatibilidad con formato antiguo
         for s in mpu_list:
+            # mag está anidado en "accel": {"mag": ...}; fallback a raíz por compatibilidad
+            accel_obj = s.get("accel") if isinstance(s.get("accel"), dict) else {}
+            mag_val   = accel_obj.get("mag", s.get("mag", 0))
+            puerto_mpu = s.get("canal", s.get("port", ch))
+            sid_mpu = f"mpu6050_{s.get('addr')}_p{puerto_mpu}"
             out.append({
-                "sensor_id": s.get("addr"),
-                "nombre": "MPU6050",
+                "sensor_id": sid_mpu,
+                "nombre": f"MPU6050 P{puerto_mpu}",
                 "tipo": "vibracion",
                 "gabinete_id": gabinete_id,
-                "puerto": s.get("port", ch),
+                "puerto": puerto_mpu,
                 "lectura": {
-                    "valor": round(float(s.get("mag", 0)), 2),
+                    "valor": round(float(mag_val), 2),
                     "unidad": "m/s²",
                     "timestamp": ts
                 }
             })
             out.append({
-                "sensor_id": s.get("addr"),
-                "nombre": "MPU6050",
+                "sensor_id": sid_mpu,
+                "nombre": f"MPU6050 P{puerto_mpu}",
                 "tipo": "estado",
                 "gabinete_id": gabinete_id,
-                "puerto": s.get("port", ch),
+                "puerto": puerto_mpu,
                 "lectura": {
                     "valor": 0 if s.get("normal") else 1,
                     "unidad": "estado",
@@ -132,12 +189,13 @@ def _map_lecturas(payload: Dict[str, Any]) -> List[Dict[str, Any]]:
 
     if "vl53l0x" in payload:
         for s in payload["vl53l0x"]:
+            puerto_vl = s.get("canal", s.get("port", ch))
             out.append({
-                "sensor_id": s.get("addr"),
-                "nombre": "VL53L0X",
+                "sensor_id": f"vl53l0x_{s.get('addr')}_p{puerto_vl}",
+                "nombre": f"VL53L0X P{puerto_vl}",
                 "tipo": "distancia",
                 "gabinete_id": gabinete_id,
-                "puerto": s.get("port", ch),
+                "puerto": puerto_vl,
                 "lectura": {
                     "valor": s.get("mm"),
                     "unidad": "mm",
@@ -230,7 +288,7 @@ def _update_wifi_from_net_payload(payload: str):
     try:
         conn = get_db_connection()
         try:
-            conn.ping(reconnect=True)
+
             cur = conn.cursor()
             cur.execute(sql, (ssid, ip, rssi))
             conn.commit()
@@ -265,6 +323,28 @@ def _procesar_data(msg: mqtt.MQTTMessage):
     with _datos_lock:
         _datos_cache[:] = mapped
 
+    # Actualizar acumulador por sensor (persiste entre mensajes MQTT)
+    with _sensor_latest_lock:
+        for d in mapped:
+            key = f"{d['sensor_id']}_{d['tipo']}"
+            ts_ms = d.get("lectura", {}).get("timestamp")
+            ts_str = (
+                datetime.fromtimestamp(ts_ms / 1000.0).strftime('%Y-%m-%d %H:%M:%S')
+                if ts_ms else None
+            )
+            _sensor_latest[key] = {
+                "sensor_id": d["sensor_id"],
+                "nombre":    d["nombre"],
+                "tipo":      d["tipo"],
+                "puerto":    d.get("puerto"),
+                "cabinetId": d.get("gabinete_id") or "cab-desconocido",
+                "lectura": {
+                    "valor":     d["lectura"]["valor"],
+                    "unidad":    d["lectura"]["unidad"],
+                    "timestamp": ts_str,
+                },
+            }
+
     if not mapped:
         print("ℹ️ sensores/datos sin lecturas. No hay inserts.")
         return
@@ -272,7 +352,7 @@ def _procesar_data(msg: mqtt.MQTTMessage):
     try:
         conn = get_db_connection()
         try:
-            conn.ping(reconnect=True)
+
             cur = conn.cursor()
             sql = """
             INSERT INTO lecturas (sensor_id, nombre_sensor, tipo_medida, valor, unidad, puerto, timestamp)
@@ -300,16 +380,21 @@ def _procesar_data(msg: mqtt.MQTTMessage):
 
     print(f"📥 Lecturas recibidas: {len(mapped)} items")
 
+    # Push en tiempo real a los clientes SSE conectados
+    _push_sse_snapshot()
+
     for d in mapped:
         try:
             ts_ms = d.get("lectura", {}).get("timestamp")
             ts_dt = datetime.fromtimestamp(ts_ms / 1000.0, tz=timezone.utc).replace(tzinfo=None) if ts_ms else datetime.utcnow()
 
             evaluate_new_reading({
-                "sensor_id": d.get("sensor_id"),
-                "tipo": d.get("tipo"),
-                "valor": float(d.get("lectura", {}).get("valor")),
-                "ts": ts_dt,
+                "sensor_id":  d.get("sensor_id"),
+                "nombre":     d.get("nombre", ""),
+                "tipo":       d.get("tipo"),
+                "valor":      float(d.get("lectura", {}).get("valor")),
+                "unidad":     d.get("lectura", {}).get("unidad", ""),
+                "ts":         ts_dt,
                 "gabinete_id": d.get("gabinete_id"),
             })
         except Exception as e:

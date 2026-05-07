@@ -133,13 +133,25 @@ export default function RuleModal({ open, onClose, onCreated, profiles, initialD
     fetch(`${BACKEND}/datos_sensores`)
       .then(r => r.json())
       .then(data => {
+        const now  = Date.now();
         const uniq = new Map();
         data.forEach(it => {
+          const ts = it.lectura?.timestamp ? new Date(it.lectura.timestamp).getTime() : 0;
+          if (ts && now - ts > 15 * 1000) return;
           const sid    = String(it.sensor_id ?? it.id ?? "");
           const tipo   = String(it.tipo ?? "");
           const nombre = it.nombre || it.name || sid;
+          const puerto = it.puerto ?? null;
           const key    = `${sid}__${tipo}`;
-          if (!uniq.has(key)) uniq.set(key, { value: sid, tipo, label: `${nombre} — ${tipo}`, metricSugg: tipo });
+          if (!uniq.has(key)) {
+            const portStr = puerto != null ? ` · Puerto ${puerto}` : "";
+            uniq.set(key, {
+              value:      sid,
+              tipo,
+              label:      `${nombre}${portStr} — ${tipo}`,
+              metricSugg: tipo,
+            });
+          }
         });
         setCandidates(Array.from(uniq.values()));
       })
@@ -314,8 +326,8 @@ export default function RuleModal({ open, onClose, onCreated, profiles, initialD
                             <div key={`${c.value}-${c.tipo}`}
                               className="px-4 py-2 cursor-pointer text-sm hover:bg-[color-mix(in_srgb,var(--color-primary)_12%,transparent)] transition"
                               onClick={() => selectSensor(c)}>
-                              <span className="font-medium">{c.value}</span>
-                              <span className="ml-2 opacity-50 text-xs">— {c.tipo}</span>
+                              <span className="font-medium">{c.label}</span>
+                              <span className="ml-2 opacity-30 text-xs font-mono">{c.value}</span>
                             </div>
                           ))}
                         </div>

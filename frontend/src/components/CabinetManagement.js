@@ -578,7 +578,7 @@ const CabinetManagement = ({ cabinets = [], sensors = [], sensorAliases = {}, on
       const t = String(s.type || '').toLowerCase();
       if (SYSTEM_SENSOR_TYPES.has(t)) return;
       const ts = s.lectura?.timestamp ? new Date(s.lectura.timestamp).getTime() : 0;
-      if (!ts || now - ts > 5 * 60 * 1000) return; // solo activos
+      if (!ts || now - ts > 15 * 1000) return; // solo activos
       list.push({
         id: `device-sensor-${s.id}-${s.type}`,
         name: sensorAliases[String(s.id)] || s.name || `Sensor ${s.id}`,

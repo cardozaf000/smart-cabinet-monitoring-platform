@@ -190,7 +190,7 @@ export default function SensorDashboard({ sensor, lastReading, isAdded, onClose,
   const firstTs   = data.length > 0 ? data[0].timestamp : null;
   const lastTs    = data.length > 0 ? data[data.length - 1].timestamp : null;
   const uptimeMs  = firstTs ? Date.now() - new Date(firstTs).getTime() : null;
-  const activeNow = lastTs  ? (Date.now() - new Date(lastTs).getTime()) < 5 * 60 * 1000 : false;
+  const activeNow = lastTs  ? (Date.now() - new Date(lastTs).getTime()) < 15 * 1000 : false;
 
   const range = RANGES[rangeIdx];
 

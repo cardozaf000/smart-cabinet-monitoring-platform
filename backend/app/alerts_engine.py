@@ -6,11 +6,14 @@
 # - Gestiona duración sostenida, histéresis y cooldown
 
 from datetime import datetime, timedelta
-from typing import Dict, Any, Optional
+from typing import Dict, Any, List, Optional
 import json
 import os
+import re
+import time
 import smtplib, ssl
 from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 
 from app.db_config import get_db_connection
 from app.crypto_utils import decrypt_str
@@ -112,6 +115,31 @@ _violation_since:     Dict[int, datetime] = {}  # rule_id -> cuándo empezó la 
 _last_notified:       Dict[int, datetime] = {}  # rule_id -> última notificación
 _current_incident_id: Dict[int, int]      = {}  # rule_id -> id del incidente activo en BD
 
+# Cache de reglas (TTL 30 s para evitar ~10-15 queries de BD por mensaje MQTT)
+_rules_cache:    List[Dict[str, Any]] = []
+_rules_cache_ts: float                = 0.0
+_RULES_CACHE_TTL = 30.0
+
+
+def _get_rules() -> List[Dict[str, Any]]:
+    global _rules_cache, _rules_cache_ts
+    if time.time() - _rules_cache_ts < _RULES_CACHE_TTL:
+        return _rules_cache
+    db  = get_db_connection()
+    cur = db.cursor(dictionary=True)
+    cur.execute("SELECT * FROM alert_rules WHERE enabled=1")
+    rows = cur.fetchall()
+    cur.close(); db.close()
+    _rules_cache    = rows
+    _rules_cache_ts = time.time()
+    return rows
+
+
+def invalidate_rules_cache() -> None:
+    """Llamar cuando se crea, edita o elimina una regla."""
+    global _rules_cache_ts
+    _rules_cache_ts = 0.0
+
 
 def _compare(op: str, value: float, thr: float) -> bool:
     return {
@@ -120,7 +148,9 @@ def _compare(op: str, value: float, thr: float) -> bool:
         "<":  lambda a, b: a <  b,
         "<=": lambda a, b: a <= b,
         "=":  lambda a, b: a == b,
-    }[op](value, thr)
+        "==": lambda a, b: a == b,
+        "!=": lambda a, b: a != b,
+    }.get(op, lambda a, b: False)(value, thr)
 
 
 def _match_rule(rule: Dict[str, Any], lectura: Dict[str, Any]) -> bool:
@@ -197,6 +227,11 @@ def _resolve_incident(inc_id: int) -> None:
 
 # ── Email ────────────────────────────────────────────────────────────────────
 
+_SEVERITY_COLORS = {
+    'CRITICAL': '#ef4444', 'HIGH': '#f97316',
+    'WARNING':  '#f59e0b', 'INFO': '#3b82f6',
+}
+
 def _build_email(rule, lectura, value):
     sev   = rule["severity"]
     title = f"[{sev}] Alerta: {rule['name']}"
@@ -211,7 +246,31 @@ def _build_email(rule, lectura, value):
     return title, "\n".join(lines)
 
 
-def _send_email_with_profile(profile_id: int, subject: str, body: str, to_list):
+def _render_custom_html(rule, lectura, value) -> Optional[str]:
+    """Sustituye variables {{...}} en el template HTML de la regla. None si no hay template."""
+    html = (rule.get('custom_html') or '').strip()
+    if not html:
+        return None
+    sev = str(rule.get('severity', 'WARNING')).upper()
+    ctx = {
+        'sensor_id':      str(lectura.get('sensor_id', '')),
+        'sensor_name':    str(lectura.get('nombre', lectura.get('sensor_id', ''))),
+        'metric':         str(rule.get('metric', lectura.get('tipo', ''))),
+        'value':          f"{value:.2f}",
+        'unit':           str(lectura.get('unidad', '')),
+        'op':             str(rule.get('op', '')),
+        'threshold':      str(rule.get('threshold', '')),
+        'severity':       sev,
+        'severity_color': _SEVERITY_COLORS.get(sev, '#f59e0b'),
+        'rule_name':      str(rule.get('name', '')),
+        'timestamp':      datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+        'location':       str(lectura.get('gabinete_id', 'N/A')),
+    }
+    return re.sub(r'\{\{(\w+)\}\}', lambda m: ctx.get(m.group(1), m.group(0)), html)
+
+
+def _send_email_with_profile(profile_id: int, subject: str, body: str, to_list,
+                              html_body: Optional[str] = None):
     db  = get_db_connection()
     cur = db.cursor(dictionary=True)
     cur.execute("SELECT * FROM smtp_profiles WHERE id=%s AND enabled=1", (profile_id,))
@@ -224,7 +283,13 @@ def _send_email_with_profile(profile_id: int, subject: str, body: str, to_list):
     username = p["username"]; pwd = decrypt_str(p["password_enc"])
     from_email = p["from_email"]
 
-    msg = MIMEText(body, "plain", "utf-8")
+    if html_body:
+        msg = MIMEMultipart("alternative")
+        msg.attach(MIMEText(body,      "plain", "utf-8"))
+        msg.attach(MIMEText(html_body, "html",  "utf-8"))
+    else:
+        msg = MIMEText(body, "plain", "utf-8")
+
     msg["Subject"] = subject
     msg["From"]    = from_email
     msg["To"]      = ", ".join(to_list)
@@ -266,11 +331,7 @@ def evaluate_new_reading(lectura: Dict[str, Any]):
         except Exception:
             ts = _now()
 
-    db  = get_db_connection()
-    cur = db.cursor(dictionary=True)
-    cur.execute("SELECT * FROM alert_rules WHERE enabled=1")
-    rules = cur.fetchall()
-    cur.close(); db.close()
+    rules = _get_rules()
 
     for r in rules:
         rid = int(r["id"])
@@ -299,10 +360,7 @@ def evaluate_new_reading(lectura: Dict[str, Any]):
                     inc_id = _open_incident(r, lectura, valor)
                     if inc_id:
                         _current_incident_id[rid] = inc_id
-
-                # LED: disparar solo la primera vez que se abre el incidente
-                if rid not in _current_incident_id:
-                    _fire_led_for_alert(r, lectura)
+                        _fire_led_for_alert(r, lectura)  # LED solo al abrir el incidente
 
                 # Cooldown para email
                 last = _last_notified.get(rid)
@@ -316,8 +374,9 @@ def evaluate_new_reading(lectura: Dict[str, Any]):
                         to = [x for x in list(email_cfg.get("to", [])) if x]
                         if to:
                             subject, body = _build_email(r, lectura, valor)
+                            html_body = _render_custom_html(r, lectura, valor)
                             try:
-                                _send_email_with_profile(int(email_cfg["profile_id"]), subject, body, to)
+                                _send_email_with_profile(int(email_cfg["profile_id"]), subject, body, to, html_body)
                                 _last_notified[rid] = ts
                                 print(f"[alerts] Email enviado: rule={rid} to={to}")
                             except Exception as e:
