@@ -1,7 +1,7 @@
 {
   "tft": {
     "enabled": true,
-    "mode": "cpu_gauge",
+    "mode": "clock",
     "rotation_cw": 0,
     "rotation_fine": 0,
     "custom_lines": [

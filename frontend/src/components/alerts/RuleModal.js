@@ -248,7 +248,8 @@ export default function RuleModal({ open, onClose, onCreated, profiles, initialD
     try {
       const url    = isEditing ? `${BACKEND}/alerts/rules/${initialData.id}` : `${BACKEND}/alerts/rules`;
       const method = isEditing ? "PUT" : "POST";
-      const res    = await fetch(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+      const token  = localStorage.getItem("auth_token");
+      const res    = await fetch(url, { method, headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify(payload) });
       const js     = await res.json();
       if (!res.ok || js.error) throw new Error(js.error || "Error al guardar la regla");
       onCreated?.();

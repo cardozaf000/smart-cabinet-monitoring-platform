@@ -17,7 +17,8 @@ def create_app():
         "https://api.tesis-monitoring.xyz",                     # por si el frontend llama desde mismo dominio
         "http://localhost:3000",                                # desarrollo local
         "http://127.0.0.1:3000",
-        "http://192.168.0.25:3000",                             # acceso LAN (IP anterior)
+        "http://192.168.0.25",                                  # acceso LAN (nginx puerto 80)
+        "http://192.168.0.25:3000",                             # acceso LAN (dev server)
         "http://192.168.0.38",                                  # acceso LAN directo (nginx)
         "http://192.168.0.40",                                  # acceso LAN directo (nginx)
     ]
