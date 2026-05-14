@@ -1,8 +1,7 @@
 import React, { useState } from "react";
 import { FiSend, FiX, FiMail } from "react-icons/fi";
 import Portal from "../Portal";
-
-const BASE = `http://${window.location.hostname}:5000`;
+import { BACKEND as BASE } from "../../utils/api";
 
 export default function TestEmailModal({ isOpen, onClose, smtpProfile, token }) {
   const [to, setTo] = useState("");

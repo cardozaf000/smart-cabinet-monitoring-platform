@@ -1,16 +1,5 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
-
-// ===========================================================
-// ✅ Detección automática de entorno (LAN vs Cloudflare túnel)
-// ===========================================================
-const isLAN =
-  window.location.hostname === "localhost" ||
-  window.location.hostname.startsWith("192.168.") ||
-  window.location.hostname.startsWith("10.");
-
-const BACKEND = isLAN
-  ? `${window.location.protocol}//${window.location.hostname}:5000`
-  : "https://api.tesis-monitoring.xyz/";
+import { BACKEND } from "../utils/api";
 
 // ===========================================================
 // === COMPONENTE PRINCIPAL =================================

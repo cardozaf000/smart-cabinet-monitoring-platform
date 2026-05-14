@@ -5,7 +5,7 @@ const isCloud =
 
 export const BACKEND = isCloud
   ? "https://api.tesis-monitoring.xyz"
-  : `http://${window.location.hostname}:5000`;
+  : "/api";
 
 export async function apiFetch(path, opts = {}) {
   const headers = { "Content-Type": "application/json", ...(opts.headers || {}) };

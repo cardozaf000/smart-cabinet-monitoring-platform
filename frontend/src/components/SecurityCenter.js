@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from "react";
 import axios from "axios";
-
-const BACKEND = `http://${window.location.hostname}:5000`;
+import { BACKEND } from "../utils/api";
 const TABS = ["Redes", "Servicios", "Políticas", "Perfiles", "Aplicar", "Auditoría"];
 
 const SecurityCenter = () => {
